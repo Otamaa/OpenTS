@@ -47,6 +47,7 @@
 
 #include "_mixfile.h"
 #include "mixfile.h"
+#include "tsarch.h"
 
 #include <cassert>
 #include <new>
@@ -281,8 +282,18 @@ int CCFileClass::Size(void)
 	*/
 	if (!BASECLASS::Is_Available()) {
 		int length = 0;
-		MFCD::Offset(File_Name(), NULL, NULL, NULL, &length);
-		return(length);
+		if (MFCD::Offset(File_Name(), NULL, NULL, NULL, &length)) {
+			return(length);
+		}
+
+		/*
+		**	the file wasn't found in any mixfile either; check the
+		**	registered tsarch (.zip) archives before giving up.
+		*/
+		if (TSArchClass::Offset(File_Name(), NULL, NULL, &length)) {
+			return(length);
+		}
+		return(0);
 	}
 
 	return(BASECLASS::Size());
@@ -315,6 +326,14 @@ bool CCFileClass::Is_Available(int )
 	**	A file that is part of a mixfile is also presumed available.
 	*/
 	if (MFCD::Offset(File_Name())) {
+		return(true);
+	}
+
+	/*
+	**	a file that is an entry inside a registered tsarch (.zip)
+	**	archive is likewise presumed available.
+	*/
+	if (TSArchClass::Offset(File_Name())) {
 		return(true);
 	}
 
@@ -452,8 +471,25 @@ int CCFileClass::Open(int rights)
 	} else {
 
 		/*
-		**	The file cannot be found in any mixfile, so it must reside as
-		**	an individual file on the disk. Or else it is just plain missing.
+		**	the file isn't part of a mixfile; check whether it is
+		**	an entry inside a registered tsarch (.zip) archive before falling
+		**	back to a plain disk open. TSArchClass::Retrieve() always returns
+		**	a fully decompressed, resident payload (there is no on-disk byte
+		**	range to bias to, the way there is for a stored mixfile entry),
+		**	so an archive hit is served the same way a RAM-cached mixfile is.
+		*/
+		int tsa_size = 0;
+		void const * tsa_pointer = TSArchClass::Retrieve(File_Name(), &tsa_size);
+		if (tsa_pointer != NULL) {
+			new (&Data) ::Buffer(tsa_pointer, tsa_size);
+			Position = 0;
+			return(true);
+		}
+
+		/*
+		**	The file cannot be found in any mixfile or tsarch archive, so it
+		**	must reside as an individual file on the disk. Or else it is just
+		**	plain missing.
 		*/
 		return(BASECLASS::Open(rights));
 	}
@@ -489,6 +525,18 @@ unsigned int CCFileClass::Get_Date_Time(void)
 			// check for nested MIX files
 			//
 			return( CCFileClass(mixfile->Filename).Get_Date_Time() );
+		}
+
+		/*
+		**	fall back to a registered tsarch archive entry's own
+		**	stored date/time. Unlike a mixfile entry, an archive entry
+		**	carries its own timestamp rather than inheriting the
+		**	container's, so there is no nested lookup to perform here.
+		*/
+		TSArchClass * archive = NULL;
+		int index = -1;
+		if (TSArchClass::Offset(File_Name(), &archive, &index, NULL)) {
+			return(archive->Get_Date_Time(index));
 		}
 		// else return 0 indicating no file
 	}
