@@ -8270,7 +8270,7 @@ void HouseClass::AI_Ion_Cannon(SuperClass * super)
 					value = 3;
 					if (techno->Strength <= Rule->IonCannonDamage) {
 						BuildingTypeClass const * builtype = ((BuildingClass *)techno)->Class;
-						if (builtype->ToBuild == RTTI_BUILDINGTYPE) {
+						if (builtype->IsConstructionYard || builtype->ToBuild == RTTI_BUILDINGTYPE) {
 							value = Rule->AIIonCannonConYardValue[Difficulty];
 						} else if (builtype->ToBuild == RTTI_UNITTYPE) {
 							value = Rule->AIIonCannonWarFactoryValue[Difficulty];
