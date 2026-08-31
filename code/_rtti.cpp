@@ -86,6 +86,7 @@ struct {
 	{ "FoggedObject",		RTTI_FOGGEDOBJECT },
 	{ "AlphaShape",			RTTI_ALPHASHAPE },
 	{ "VeinholeMonster",	RTTI_VEINHOLEMONSTER },
+	{ "IonBlast",			RTTI_IONBLAST},
 };
 
 static char UNKNOWN_RTTI_NAME[] = { "Unknown" };

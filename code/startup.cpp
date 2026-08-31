@@ -347,6 +347,7 @@ static bool RegisterClasses(void)
 	REGISTER_CLASS(NeuronClass, CLSID_NeuronClass);
 	REGISTER_CLASS(FoggedObjectClass, CLSID_FoggedObjectClass);
 	REGISTER_CLASS(AlphaShapeClass, CLSID_AlphaShapeClass);
+	REGISTER_CLASS(IonBlastClass, CLSID_IonBlastClass);
 
 	if (failed) {
 		MessageBox(NULL, Fetch_String(TXT_PREPARECOM_FAILED), Fetch_String(TXT_SHORT_TITLE), MB_ICONEXCLAMATION);

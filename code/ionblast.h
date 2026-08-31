@@ -8,16 +8,26 @@
  ******************************************************************************/
 
 #pragma once
-
+#include "abstract.h"
 #include "coord.h"
 
 template<class T> class DynamicVectorClass;
 
-class IonBlastClass
+class IonBlastClass : public AbstractClass
 {
+		typedef AbstractClass BASECLASS;
 	public:
 		IonBlastClass(Coord coord);
+		IonBlastClass(void);
 		~IonBlastClass(void);
+
+		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+
+		virtual void Serialize(SaveStreamClass & stream) override;
+
+		virtual RTTIType Fetch_RTTI(void) const override;
+		virtual void Compute_CRC(CRCEngine &) const override;
+		virtual void Detach(AbstractClass const * target, bool all = true) override;
 
 		void AI(void);
 		void Draw_It(void);

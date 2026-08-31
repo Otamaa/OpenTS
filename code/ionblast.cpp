@@ -31,6 +31,9 @@
 #include "vector.h"
 #include "vector3.h"
 #include "zbuffer.h"
+#include "savestream.h"
+
+#include "isun.h"
 
 #include <algorithm>
 
@@ -72,12 +75,25 @@ Point2D Spiral_Index_To_Point(int index);
 /// action of the same name are the two things that set one off.
 /// </summary>
 IonBlastClass::IonBlastClass(Coord coord) :
+	BASECLASS(),
 	Lifetime(0),
 	Position(coord)
 {
 	IonBlasts.Add(this);
 }
 
+/// <summary>
+/// Creates a blank ion blast.
+/// This routine is used by the save/load system, which needs an empty object to read the
+/// saved state into.
+/// </summary>
+IonBlastClass::IonBlastClass(void) :
+	BASECLASS(),
+	Lifetime(0),
+	Position()
+{
+	IonBlasts.Add(this);
+}
 
 /// <summary>
 /// Removes this blast from the list of blasts in progress.
@@ -86,6 +102,73 @@ IonBlastClass::~IonBlastClass(void)
 {
 	IonBlasts.Delete(this);
 }
+
+
+
+/// <summary>
+/// Fetches the class identifier used to persist this object.
+/// The save system writes this identifier ahead of the object data so that the loader
+/// knows what kind of object to reconstruct.
+/// </summary>
+/// <param name="retval">Pointer to the buffer that will receive the class identifier.</param>
+/// <returns>Returns with S_OK, or E_POINTER if no buffer was supplied.</returns>
+HRESULT STDMETHODCALLTYPE IonBlastClass::GetClassID(CLSID * retval)
+{
+	if (retval == NULL) return(E_POINTER);
+	*retval = CLSID_IonBlastClass;
+	return(S_OK);
+}
+
+
+/// <summary>
+/// Fetches the run time type identifier of this object.
+/// </summary>
+/// <returns>Returns with RTTI_IONBLAST.</returns>
+RTTIType IonBlastClass::Fetch_RTTI(void) const
+{
+	return(RTTI_IONBLAST);
+}
+
+
+/// <summary>
+/// Adds the state of this alpha shape to the running game checksum.
+/// This routine is used by the multiplayer sync check to prove that every machine holds
+/// an identical copy of this object.
+/// </summary>
+/// <param name="crc">The checksum engine to submit the object state to.</param>
+void IonBlastClass::Compute_CRC(CRCEngine & crc) const
+{
+	BASECLASS::Compute_CRC(crc);
+	crc(Position.X);
+	crc(Position.Y);
+	crc(Position.Z);
+	crc(Lifetime);
+}
+
+
+/// <summary>
+/// Lists the members this alpha shape carries.
+/// </summary>
+/// <param name="stream">The stream carrying the members.</param>
+void IonBlastClass::Serialize(SaveStreamClass & stream)
+{
+	BASECLASS::Serialize(stream);
+
+	stream.Serialize(Position);
+	stream.Serialize(Lifetime);
+}
+
+
+/// <summary>
+/// Removes any reference this shape has to the object specified.
+/// When the object going away is this shape's owner, the shape flags itself for deletion
+/// rather than lingering with a dangling owner pointer.
+/// </summary>
+/// <param name="target">The object that is about to be removed from the game.</param>
+void IonBlastClass::Detach(AbstractClass const * target, bool all)
+{
+}
+
 
 
 /// <summary>
