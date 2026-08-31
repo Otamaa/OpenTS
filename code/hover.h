@@ -16,7 +16,6 @@
 #include "face.h"
 #include "facing.h"
 #include "ftimer.h"
-#include "ipiggy.h"
 #include "loco.h"
 #include "matrix3d.h"
 #include "timer.h"
@@ -36,7 +35,7 @@ class HoverLocomotionClass : public LocomotionClass
 		HoverLocomotionClass(void);
 		virtual ~HoverLocomotionClass(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
 

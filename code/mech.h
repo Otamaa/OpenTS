@@ -27,7 +27,7 @@ class MechLocomotionClass : public LocomotionClass
 		MechLocomotionClass(void);
 		virtual ~MechLocomotionClass(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
 

@@ -287,7 +287,8 @@ void WalkLocomotionClass::Movement_AI(bool first_pass)
 					Cell cell = tube_ptr->Exit;
 					HeadToCoord = Coord(cell, 0);
 
-					LinkedTo->Advance_Path(1);
+					memcpy(&LinkedTo->Path[0], &LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (ARRAY_SIZE(LinkedTo->Path) - 1));
+					LinkedTo->Path[ARRAY_SIZE(LinkedTo->Path) - 1] = FACING_NONE;
 
 					LinkedTo->CurrentTube = tube;
 					LinkedTo->CurrentTubeDir = FACING_FIRST;
@@ -458,7 +459,8 @@ void WalkLocomotionClass::Movement_AI(bool first_pass)
 				LinkedTo->Path[1] = FACING_NONE;
 			}
 
-			LinkedTo->Advance_Path(1);
+			memcpy(&LinkedTo->Path[0], &LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (ARRAY_SIZE(LinkedTo->Path) - 1));
+			LinkedTo->Path[ARRAY_SIZE(LinkedTo->Path) - 1] = FACING_NONE;
 
 			LinkedTo->Set_Coord(HeadToCoord);
 			LinkedTo->LastPathingCell = HeadToCoord.As_Cell();
@@ -609,25 +611,18 @@ bool WalkLocomotionClass::Mark_Head_To(Coord const & coord)
 
 
 /// <summary>
-/// Fetches the class ID of this locomotor.
-/// The persistence system uses this to recreate the correct locomotor when a saved
-/// game is loaded.
+/// Fetches this locomotor's type.
 /// </summary>
-/// <param name="retval">Pointer to the class ID to fill in.</param>
-/// <returns>Returns with S_OK if the class ID was fetched, otherwise E_POINTER.</returns>
-HRESULT STDMETHODCALLTYPE WalkLocomotionClass::GetClassID(CLSID * retval)
+LocomotorType STDMETHODCALLTYPE WalkLocomotionClass::Get_Type(void) const
 {
-	if (retval == NULL) return(E_POINTER);
-	*retval = CLSID_WalkLocomotion;
-	return(S_OK);
+	return(LocomotorType::Walk);
 }
 
 
 /// <summary>
 /// Lists the members this walk locomotor carries.
 /// The locomotor this one was stacked on top of is a separate persistent object rather
-/// than a member, so it still travels framed by OLE and is recreated as the class it was
-/// saved as.
+/// than a member, so it still travels via its own type-tagged save record.
 /// </summary>
 /// <param name="stream">The stream carrying the members.</param>
 void WalkLocomotionClass::Serialize(SaveStreamClass & stream)
@@ -645,10 +640,14 @@ void WalkLocomotionClass::Serialize(SaveStreamClass & stream)
 
 	if (haspiggy) {
 		if (stream.Is_Saving()) {
-			IPersistStreamPtr persist(Piggybacker);
-			OleSaveToStream(persist, stream.Get_Stream());
+			uint8_t type = (uint8_t)Piggybacker->Get_Type();
+			stream.Get_Stream()->Write(&type, sizeof(type), NULL);
+			Piggybacker->Save(stream.Get_Stream(), TRUE);
 		} else {
-			OleLoadFromStream(stream.Get_Stream(), IID_ILocomotion, (LPVOID *)&Piggybacker);
+			uint8_t type;
+			stream.Get_Stream()->Read(&type, sizeof(type), NULL);
+			Piggybacker = Create_Locomotion((LocomotorType)type);
+			Piggybacker->Load(stream.Get_Stream());
 		}
 	}
 }
@@ -665,46 +664,20 @@ LayerType STDMETHODCALLTYPE WalkLocomotionClass::In_Which_Layer(void)
 
 
 /// <summary>
-/// Fetches an interface pointer from this locomotor.
-/// This routine extends the base locomotor with the piggyback interface.
-/// </summary>
-/// <param name="riid">The interface identifier being asked for.</param>
-/// <param name="ppvObject">Pointer to the interface pointer to fill in.</param>
-/// <returns>Returns with S_OK if the interface was supplied, otherwise E_NOINTERFACE.</returns>
-HRESULT STDMETHODCALLTYPE WalkLocomotionClass::QueryInterface(REFIID riid, LPVOID * ppvObject)
-{
-	HRESULT result = BASECLASS::QueryInterface(riid, ppvObject);
-
-	if (result == E_NOINTERFACE) {
-		if (riid == IID_IPiggyback) {
-			*ppvObject = (IPiggyback*)this;
-		}
-		if (*ppvObject == NULL) {
-			result = E_NOINTERFACE;
-		} else {
-			AddRef();
-			result = S_OK;
-		}
-	}
-	return(result);
-}
-
-
-/// <summary>
 /// Attaches a piggybacking locomotor to this one.
 /// This routine is used when some temporary means of travel, such as being carried
 /// along, must take over from ordinary walking.
 /// </summary>
-/// <param name="pointer">The locomotor that will ride along on this one.</param>
+/// <param name="pointer">The locomotor that will ride along on this one. Ownership transfers.</param>
 /// <returns>Returns with S_OK if the locomotor was attached, or E_FAIL if one is already
 /// piggybacking.</returns>
-HRESULT STDMETHODCALLTYPE WalkLocomotionClass::Begin_Piggyback(ILocomotion * pointer)
+HRESULT STDMETHODCALLTYPE WalkLocomotionClass::Begin_Piggyback(std::unique_ptr<LocomotionClass> pointer)
 {
 	if (pointer == NULL) {
 		return(E_POINTER);
 	}
 	if (Piggybacker == NULL) {
-		Piggybacker = pointer;
+		Piggybacker = std::move(pointer);
 		return(S_OK);
 	}
 	return(E_FAIL);
@@ -715,17 +688,13 @@ HRESULT STDMETHODCALLTYPE WalkLocomotionClass::Begin_Piggyback(ILocomotion * poi
 /// Ends the piggyback session and hands back the locomotor that was riding along.
 /// Ownership of the piggybacking locomotor passes to the caller.
 /// </summary>
-/// <param name="pointer">Pointer to the locomotor pointer to fill in.</param>
+/// <param name="pointer">Reference to the unique_ptr to fill in.</param>
 /// <returns>Returns with S_OK if a piggybacking locomotor was handed back, or S_FALSE if
 /// there was none.</returns>
-HRESULT STDMETHODCALLTYPE WalkLocomotionClass::End_Piggyback(ILocomotion ** pointer)
+HRESULT STDMETHODCALLTYPE WalkLocomotionClass::End_Piggyback(std::unique_ptr<LocomotionClass> & pointer)
 {
-	if (pointer == NULL) {
-		return(E_POINTER);
-	}
 	if (Piggybacker != NULL) {
-		*pointer = Piggybacker;
-		Piggybacker.Detach();
+		pointer = std::move(Piggybacker);
 		return(S_OK);
 	}
 	return(S_FALSE);
@@ -748,31 +717,17 @@ boolean STDMETHODCALLTYPE WalkLocomotionClass::Is_Ok_To_End(void)
 
 
 /// <summary>
-/// Fetches the class ID of whichever locomotor is in charge.
+/// Fetches the type of whichever locomotor is in charge.
 /// This routine reports the piggybacking locomotor's identity when one has taken
 /// over, otherwise it identifies this walking locomotor.
 /// </summary>
-/// <param name="classid">Pointer to the class ID to fill in.</param>
-/// <returns>Returns with S_OK if the class ID was fetched, otherwise an error code.</returns>
-HRESULT STDMETHODCALLTYPE WalkLocomotionClass::Piggyback_CLSID(GUID * classid)
+/// <returns>Returns with the type of whichever locomotor currently has charge of the unit.</returns>
+LocomotorType STDMETHODCALLTYPE WalkLocomotionClass::Piggyback_Type(void)
 {
-	if (classid == NULL) {
-		return(E_POINTER);
-	}
-
 	if (Piggybacker != NULL) {
-		IPersistPtr ptr(Piggybacker);
-		if (ptr == NULL) {
-			return(E_FAIL);
-		}
-		return(ptr->GetClassID(classid));
+		return(Piggybacker->Get_Type());
 	}
-
-	IPersistPtr ptr(this);
-	if (ptr == NULL) {
-		return(E_FAIL);
-	}
-	return(ptr->GetClassID(classid));
+	return(Get_Type());
 }
 
 

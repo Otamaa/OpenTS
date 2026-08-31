@@ -29,7 +29,10 @@
 
 #include <cassert>
 
-extern ULONG COMRefCount;
+// COMRefCount removed here -- locomotors are no longer COM reference-counted
+// (see LOCOMOTION_COM_REPLACEMENT.md). The global itself still exists for
+// the engine's other real COM classes; it's just not touched from here
+// anymore.
 
 
 /// <summary>
@@ -41,8 +44,7 @@ extern ULONG COMRefCount;
 LocomotionClass::LocomotionClass(void) :
 	LinkedTo(NULL),
 	IsPowered(true),
-	Dirty(true),
-	RefCount(0)
+	Dirty(true)
 {
 }
 
@@ -183,74 +185,9 @@ boolean STDMETHODCALLTYPE LocomotionClass::Is_Ion_Sensitive(void)
 }
 
 
-/// <summary>
-/// Adds a reference to this locomotor.
-/// Anything that holds on to a locomotor takes a reference first, which keeps the
-/// locomotor alive until that holder releases it again.
-/// </summary>
-/// <returns>Returns with the number of references now outstanding.</returns>
-ULONG STDMETHODCALLTYPE LocomotionClass::AddRef(void)
-{
-	++COMRefCount;
-	return(InterlockedIncrement(&RefCount));
-}
-
-
-/// <summary>
-/// Releases a reference to this locomotor.
-/// When the last reference goes away the locomotor destroys itself, so the caller must
-/// not touch its pointer afterward.
-/// </summary>
-/// <returns>Returns with the number of references still outstanding.</returns>
-ULONG STDMETHODCALLTYPE LocomotionClass::Release(void)
-{
-	--COMRefCount;
-
-	ULONG count = InterlockedDecrement(&RefCount);
-	if (count == 0) {
-		delete this;
-	}
-	return(count);
-}
-
-
-/// <summary>
-/// Fetches one of the interfaces this locomotor implements.
-/// A locomotor answers to IUnknown, IPersist, IPersistStream, and ILocomotion. Any other
-/// interface asked for is refused.
-/// </summary>
-/// <param name="riid">The identifier of the interface being asked for.</param>
-/// <param name="ppvObject">Pointer to the location to store the interface pointer in.</param>
-/// <returns>Returns with S_OK, or E_NOINTERFACE if the interface is not supported.</returns>
-/// <remarks>An interface fetched successfully carries a reference. The caller must release
-/// it when finished with it.</remarks>
-LONG STDMETHODCALLTYPE LocomotionClass::QueryInterface(REFIID riid, LPVOID *ppvObject)
-{
-	if (ppvObject == NULL) {
-		return(E_POINTER);
-	}
-
-	*ppvObject = NULL;
-
-	if (riid == IID_IUnknown) {
-		*ppvObject = (IUnknown *)(ILocomotion *)this;
-	}
-	if (riid == IID_IPersistStream) {
-		*ppvObject = (IPersistStream *)this;
-	}
-	if (riid == IID_ILocomotion) {
-		*ppvObject = (ILocomotion *)this;
-	}
-	if (riid == IID_IPersist) {
-		*ppvObject = (IPersist *)this;
-	}
-	if (*ppvObject == NULL) {
-		return(E_NOINTERFACE);
-	}
-
-	AddRef();
-	return(S_OK);
-}
+// AddRef/Release/QueryInterface removed -- lifetime is now a plain
+// std::unique_ptr<LocomotionClass> (see loco.h), no ref-counting or
+// interface-identity machinery needed. See LOCOMOTION_COM_REPLACEMENT.md.
 
 
 /// <summary>
@@ -367,7 +304,6 @@ void LocomotionClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(Dirty);
 
 }
-	// RefCount -- belongs to the running session rather than the record.
 
 
 /// <summary>

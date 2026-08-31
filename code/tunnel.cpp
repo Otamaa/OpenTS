@@ -637,13 +637,9 @@ void STDMETHODCALLTYPE TunnelLocomotionClass::Do_Turn(DirType coord)
 /// This routine is part of the COM persistence support. The save system records the
 /// identifier so that the right locomotor can be created again when the game is loaded.
 /// </summary>
-/// <param name="retval">The location to store the class identifier in.</param>
-/// <returns>Returns with S_OK, or E_POINTER if no destination was supplied.</returns>
-HRESULT STDMETHODCALLTYPE TunnelLocomotionClass::GetClassID(CLSID * retval)
+LocomotorType STDMETHODCALLTYPE TunnelLocomotionClass::Get_Type(void) const
 {
-	if (retval == NULL) return(E_POINTER);
-	*retval = CLSID_TunnelLocomotion;
-	return(S_OK);
+	return(LocomotorType::Tunnel);
 }
 
 

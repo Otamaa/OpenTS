@@ -118,6 +118,7 @@
 #include "building.h"
 #include "builtype.h"
 #include "bullet.h"
+#include "piggyback_capable.h"
 #include "bullettype.h"
 #include "ccrand.h"
 #include "cell.h"
@@ -127,13 +128,11 @@
 #include "fog.h"
 #include "house.h"
 #include "houstype.h"
-#include "ilocos.h"
 #include "incdec.h"
 #include "infantry.h"
 #include "infatype.h"
 #include "inline.h"
 #include "ion.h"
-#include "ipiggy.h"
 #include "isotype.h"
 #include "lightcon.h"
 #include "mixfile.h"
@@ -223,7 +222,7 @@ UnitClass::UnitClass(UnitTypeClass const * type, HouseClass * house) :
 	SecondaryFacing.Set(PrimaryFacing.Current());
 
 	if (Class != NULL) {
-		Locomotion = ILocomotionPtr(Class->Locomotor, NULL, CLSCTX_ALL);
+		Locomotion = Create_Locomotion(Class->Locomotor);
 		Locomotion->Link_To_Object(this);
 	}
 
@@ -2108,10 +2107,7 @@ void UnitClass::Per_Cell_Process(PCPType why)
 			Cell center = Center_Coord();
 			Cell whom_center = whom->Center_Coord();
 			if (Center_Coord().As_Cell() == whom->Center_Coord().As_Cell() && whom->RTTI == RTTI_BUILDING) {
-				IPersistPtr persist(Locomotion);
-				CLSID clsid;
-				persist->GetClassID(&clsid);
-				if (clsid == CLSID_HoverLocomotion && static_cast<BuildingClass *>(whom)->Class->IsCanUnitRepair && NavCom == NULL) {
+				if (Locomotion->Get_Type() == LocomotorType::Hover && static_cast<BuildingClass *>(whom)->Class->IsCanUnitRepair && NavCom == NULL) {
 					NavCom = whom;
 				}
 				if (whom == NavCom) {
@@ -5224,10 +5220,7 @@ void UnitClass::Assign_Destination(AbstractClass * target, bool immediate)
 	 * re-target the nearest reachable cell when driving rather than burrowing.
 	 */
 	if (target != NULL && Class->IsSubterranean && Locomotion->Is_Moving()) {
-		IPersistPtr persist(Locomotion);
-		CLSID clsid;
-		persist->GetClassID(&clsid);
-		if (clsid == CLSID_DriveLocomotion) {
+		if (Locomotion->Get_Type() == LocomotorType::Drive) {
 			NavQueue.Add_Head(target);
 			RouteQueue.Clear();
 			CellClass * tcell = Get_Target_Cell_Ptr();
@@ -5318,10 +5311,7 @@ void UnitClass::Assign_Destination(AbstractClass * target, bool immediate)
 		 * (Mirrors BuildingClass weapons-factory exit, building.cpp:6236-6251.)
 		 */
 		if (target != NULL && !Locomotion->Is_Moving()) {
-			IPersistPtr persist(Locomotion);
-			CLSID clsid;
-			persist->GetClassID(&clsid);
-			if (clsid == CLSID_TunnelLocomotion && Get_Height_AGL() == 0) {
+			if (Locomotion->Get_Type() == LocomotorType::Tunnel && Get_Height_AGL() == 0) {
 				Coord tc = target->Center_Coord();
 				int gl = Map.Get_Height_GL(tc);
 				if (tc.Z < gl) tc.Z = gl;
@@ -5342,18 +5332,20 @@ void UnitClass::Assign_Destination(AbstractClass * target, bool immediate)
 				}
 
 				if (doswap) {
-					IPiggybackPtr piggy(Locomotion);
-					if (piggy != NULL && piggy->Is_Piggybacking()) {
-						piggy->End_Piggyback(&Locomotion);
+					if (auto * piggy = dynamic_cast<PiggybackCapable *>(Locomotion.get())) {
+						if (piggy->Is_Piggybacking()) {
+							// Keep the tunnel locomotor alive through this call -- End_Piggyback
+							// reassigns Locomotion, which would otherwise destroy the very object
+							// piggy belongs to while its own method is still running.
+							std::unique_ptr<LocomotionClass> keepalive = std::move(Locomotion);
+							piggy->End_Piggyback(Locomotion);
+						}
 					}
-					ILocomotionPtr walk(CLSID_DriveLocomotion);
+					std::unique_ptr<LocomotionClass> walk = Create_Locomotion(LocomotorType::Drive);
 					walk->Link_To_Object(this);
-					piggy = IPiggybackPtr(walk);
-					if (piggy != NULL) {
-						piggy->Begin_Piggyback(Locomotion);
-						Locomotion = walk;
-						Locomotion->Force_New_Slope(Map[Get_Coord()].Ramp);
-					}
+					dynamic_cast<PiggybackCapable *>(walk.get())->Begin_Piggyback(std::move(Locomotion));
+					Locomotion = std::move(walk);
+					Locomotion->Force_New_Slope(Map[Get_Coord()].Ramp);
 				}
 			}
 		}

@@ -29,7 +29,7 @@ class TunnelLocomotionClass : public LocomotionClass
 		*/
 		TunnelLocomotionClass(void);
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
 

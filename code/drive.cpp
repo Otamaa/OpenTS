@@ -117,7 +117,7 @@ DriveLocomotionClass::DriveLocomotionClass(void) :
 	TargetSpeed(0),
 	TrackNumber(-1),
 	TrackIndex(-1),
-	Piggybacker(NULL)
+	Piggybacker()
 {
 }
 
@@ -132,60 +132,26 @@ DriveLocomotionClass::~DriveLocomotionClass(void)
 
 
 /// <summary>
-/// Fetches the class identifier of whichever locomotor is driving the unit.
-/// That is the identifier of the locomotor riding along on this driver when there is one,
+/// Fetches the type of whichever locomotor is driving the unit.
+/// That is the type of the locomotor riding along on this driver when there is one,
 /// and the driver's own otherwise.
 /// </summary>
-/// <param name="classid">Pointer to the identifier to fill in.</param>
-/// <returns>Returns with S_OK if the identifier was supplied, E_FAIL if the locomotor
-/// could not be asked, or E_POINTER if no destination was supplied.</returns>
-HRESULT DriveLocomotionClass::Piggyback_CLSID(CLSID * classid)
+/// <returns>Returns with the type of whichever locomotor currently has charge of the unit.</returns>
+LocomotorType DriveLocomotionClass::Piggyback_Type(void)
 {
-	if (classid == NULL) {
-		return(E_POINTER);
-	}
-
 	if (Piggybacker != NULL) {
-		IPersistPtr ptr(Piggybacker);
-		if (ptr == NULL) {
-			return(E_FAIL);
-		}
-		return(ptr->GetClassID(classid));
+		return(Piggybacker->Get_Type());
 	}
-
-	IPersistPtr ptr(this);
-	if (ptr == NULL) {
-		return(E_FAIL);
-	}
-	return(ptr->GetClassID(classid));
+	return(Get_Type());
 }
 
 
 /// <summary>
-/// Fetches an interface supported by this locomotor.
-/// The driver answers for the piggyback interface on top of whatever the base locomotor
-/// already supports.
+/// Fetches this locomotor's type.
 /// </summary>
-/// <param name="riid">The identifier of the interface asked for.</param>
-/// <param name="ppvObject">Pointer to the interface pointer to fill in.</param>
-/// <returns>Returns with S_OK if the interface was supplied, otherwise
-/// E_NOINTERFACE.</returns>
-HRESULT STDMETHODCALLTYPE DriveLocomotionClass::QueryInterface(REFIID riid, LPVOID * ppvObject)
+LocomotorType STDMETHODCALLTYPE DriveLocomotionClass::Get_Type(void) const
 {
-	HRESULT result = BASECLASS::QueryInterface(riid, ppvObject);
-
-	if (result == E_NOINTERFACE) {
-		if (riid == IID_IPiggyback) {
-			*ppvObject = (IPiggyback*)this;
-		}
-		if (*ppvObject == NULL) {
-			result = E_NOINTERFACE;
-		} else {
-			AddRef();
-			result = S_OK;
-		}
-	}
-	return(result);
+	return(LocomotorType::Drive);
 }
 
 
@@ -220,10 +186,14 @@ void DriveLocomotionClass::Serialize(SaveStreamClass & stream)
 
 	if (haspiggy) {
 		if (stream.Is_Saving()) {
-			IPersistStreamPtr persist(Piggybacker);
-			OleSaveToStream(persist, stream.Get_Stream());
+			uint8_t type = (uint8_t)Piggybacker->Get_Type();
+			stream.Get_Stream()->Write(&type, sizeof(type), NULL);
+			Piggybacker->Save(stream.Get_Stream(), TRUE);
 		} else {
-			OleLoadFromStream(stream.Get_Stream(), IID_ILocomotion, (LPVOID *)&Piggybacker);
+			uint8_t type;
+			stream.Get_Stream()->Read(&type, sizeof(type), NULL);
+			Piggybacker = Create_Locomotion((LocomotorType)type);
+			Piggybacker->Load(stream.Get_Stream());
 		}
 	}
 	// TrackControl -- constant tables shared by every driver.
@@ -240,13 +210,13 @@ void DriveLocomotionClass::Serialize(SaveStreamClass & stream)
 /// <param name="pointer">The locomotor that is to take over the unit.</param>
 /// <returns>Returns with S_OK if the locomotor was taken on, E_FAIL if one is already
 /// riding, or E_POINTER if none was supplied.</returns>
-HRESULT STDMETHODCALLTYPE DriveLocomotionClass::Begin_Piggyback(ILocomotion *pointer)
+HRESULT STDMETHODCALLTYPE DriveLocomotionClass::Begin_Piggyback(std::unique_ptr<LocomotionClass> pointer)
 {
 	if (pointer == NULL) {
 		return(E_POINTER);
 	}
 	if (Piggybacker == NULL) {
-		Piggybacker = pointer;
+		Piggybacker = std::move(pointer);
 		return(S_OK);
 	}
 	return(E_FAIL);
@@ -258,17 +228,13 @@ HRESULT STDMETHODCALLTYPE DriveLocomotionClass::Begin_Piggyback(ILocomotion *poi
 /// The riding locomotor is detached and given up, leaving this driver in sole charge of
 /// the unit once more.
 /// </summary>
-/// <param name="pointer">Pointer to the locomotor pointer to fill in.</param>
+/// <param name="pointer">Reference to the unique_ptr to fill in.</param>
 /// <returns>Returns with S_OK if a locomotor was handed back, S_FALSE if there was none
-/// riding, or E_POINTER if no destination was supplied.</returns>
-HRESULT DriveLocomotionClass::End_Piggyback(ILocomotion **pointer)
+/// riding.</returns>
+HRESULT DriveLocomotionClass::End_Piggyback(std::unique_ptr<LocomotionClass> & pointer)
 {
-	if (pointer == NULL) {
-		return(E_POINTER);
-	}
 	if (Piggybacker != NULL) {
-		*pointer = Piggybacker;
-		Piggybacker.Detach();
+		pointer = std::move(Piggybacker);
 		return(S_OK);
 	}
 	return(S_FALSE);
@@ -1012,7 +978,8 @@ bool DriveLocomotionClass::While_Moving(bool just_started)
 			TubeClass * tube = Tubes[tubenum];
 			Cell c = tube->Exit;
 			HeadToCoord = c.As_Coord();
-			LinkedTo->Advance_Path(1);
+			memcpy((char*)&LinkedTo->Path, (char*)&LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (CONQUER_PATH_MAX-1));
+			LinkedTo->Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 			LinkedTo->CurrentTube = tubenum;
 			LinkedTo->CurrentTubeDir = FACING_FIRST;
 			LinkedTo->LastTubeCoord = Map[Adjacent_Cell((Cell)tube->Enter, tube->Dirs[0])].Cell_Coord();
@@ -1195,7 +1162,8 @@ bool DriveLocomotionClass::While_Moving(bool just_started)
 								if (LinkedTo == NULL || !LinkedTo->IsActive || LinkedTo->IsInLimbo || LinkedTo->IsFalling) return(false);
 								if (Start_Driver(c)) {
 									LinkedTo->Set_Speed(oldspeed);
-									LinkedTo->Advance_Path(1);
+									memcpy((char*)&LinkedTo->Path, (char*)&LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (CONQUER_PATH_MAX-1));
+									LinkedTo->Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 								}
 								break;
 
@@ -1990,12 +1958,15 @@ bool DriveLocomotionClass::Start_Of_Move(bool & stop_processing, bool retry, boo
 				}
 
 			} else {
-				LinkedTo->Advance_Path(2);
+				memcpy((char*)&LinkedTo->Path[0], (char*)&LinkedTo->Path[2], sizeof(LinkedTo->Path[0]) * (CONQUER_PATH_MAX-2));
+				LinkedTo->Path[CONQUER_PATH_MAX-2] = FACING_NONE;
 				LinkedTo->IsPlanningToLook = true;
 			}
 		} else {
-			LinkedTo->Advance_Path(1);
+			memcpy((char*)&LinkedTo->Path[0], (char*)&LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (CONQUER_PATH_MAX-1));
 		}
+
+		LinkedTo->Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 		LinkedTo->LastPathingCell = dest.As_Cell();
 		LinkedTo->IsNewNavCom = false;
 		TrackIndex = 0;
@@ -2125,21 +2096,6 @@ bool DriveLocomotionClass::Incoming(Cell cell)
 LayerType STDMETHODCALLTYPE DriveLocomotionClass::In_Which_Layer(void)
 {
 	return(LAYER_GROUND);
-}
-
-
-/// <summary>
-/// Fetches the class identifier of this locomotor.
-/// The persistence system uses this to know which locomotor to create when the unit is
-/// loaded back in.
-/// </summary>
-/// <param name="retval">Pointer to the identifier to fill in.</param>
-/// <returns>Returns with S_OK, or E_POINTER if no destination was supplied.</returns>
-HRESULT STDMETHODCALLTYPE DriveLocomotionClass::GetClassID(CLSID * retval)
-{
-	if (retval == NULL) return(E_POINTER);
-	*retval = CLSID_DriveLocomotion;
-	return(S_OK);
 }
 
 
@@ -2350,26 +2306,6 @@ int STDMETHODCALLTYPE DriveLocomotionClass::Get_Track_Index(void)
 int STDMETHODCALLTYPE DriveLocomotionClass::Get_Speed_Accum(void)
 {
 	return(SpeedAccum);
-}
-
-
-/// <summary>
-/// Adds a reference to this locomotor.
-/// </summary>
-/// <returns>Returns with the reference count once the new reference is counted.</returns>
-ULONG STDMETHODCALLTYPE DriveLocomotionClass::AddRef(void)
-{
-	return(BASECLASS::AddRef());
-}
-
-
-/// <summary>
-/// Releases a reference to this locomotor.
-/// </summary>
-/// <returns>Returns with the reference count remaining after the release.</returns>
-ULONG STDMETHODCALLTYPE DriveLocomotionClass::Release(void)
-{
-	return(BASECLASS::Release());
 }
 
 

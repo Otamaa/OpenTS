@@ -13,11 +13,11 @@
 
 #pragma once
 
-#include "ipiggy.h"
 #include "loco.h"
+#include "piggyback_capable.h"
 
 
-class WalkLocomotionClass : public LocomotionClass, public IPiggyback
+class WalkLocomotionClass : public LocomotionClass, public PiggybackCapable
 {
 		typedef LocomotionClass BASECLASS;
 
@@ -29,18 +29,14 @@ class WalkLocomotionClass : public LocomotionClass, public IPiggyback
 		WalkLocomotionClass(void);
 		virtual ~WalkLocomotionClass(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
 
-		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, LPVOID * ppvObject) override;
-		virtual ULONG STDMETHODCALLTYPE AddRef(void) override {return(BASECLASS::AddRef());}
-		virtual ULONG STDMETHODCALLTYPE Release(void) override {return(BASECLASS::Release());}
-
-		virtual HRESULT STDMETHODCALLTYPE Begin_Piggyback(ILocomotion * pointer) override;
-		virtual HRESULT STDMETHODCALLTYPE End_Piggyback(ILocomotion ** pointer) override;
+		virtual HRESULT STDMETHODCALLTYPE Begin_Piggyback(std::unique_ptr<LocomotionClass> inner) override;
+		virtual HRESULT STDMETHODCALLTYPE End_Piggyback(std::unique_ptr<LocomotionClass> & pointer) override;
 		virtual boolean STDMETHODCALLTYPE Is_Ok_To_End(void) override;
-		virtual HRESULT STDMETHODCALLTYPE Piggyback_CLSID(GUID * classid) override;
+		virtual LocomotorType STDMETHODCALLTYPE Piggyback_Type(void) override;
 		virtual boolean STDMETHODCALLTYPE Is_Piggybacking(void) override {return(Piggybacker != NULL);}
 
 		virtual boolean STDMETHODCALLTYPE Is_Moving(void) override;
@@ -100,5 +96,5 @@ class WalkLocomotionClass : public LocomotionClass, public IPiggyback
 		 * temporarily -- a jump jet coming down to cover the last few cells on foot, say --
 		 * and the suspended locomotor is handed back when the walk is finished.
 		 */
-		ILocomotionPtr Piggybacker;
+		std::unique_ptr<LocomotionClass> Piggybacker;
 };

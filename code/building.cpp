@@ -137,14 +137,14 @@
 #include "goptions.h"
 #include "house.h"
 #include "houstype.h"
-#include "iloco.h"
-#include "ilocos.h"
+#include "loco.h"
+#include "locomotor_type.h"
+#include "piggyback_capable.h"
 #include "incdec.h"
 #include "infantry.h"
 #include "infatype.h"
 #include "inline.h"
 #include "ion.h"
-#include "ipiggy.h"
 #include "isotile.h"
 #include "isotype.h"
 #include "light.h"
@@ -5516,10 +5516,7 @@ int BuildingClass::Do_MISSION_REPAIR(void)
 					**	distance check.  Fixed-wing aircraft are very inaccurate with
 					**	their landings.
 					*/
-					IPersistPtr persist(tech->Locomotion);
-					CLSID clsid;
-					persist->GetClassID(&clsid);
-					bool hover = (clsid == CLSID_HoverLocomotion) != 0;
+					bool hover = (tech->Locomotion->Get_Type() == LocomotorType::Hover);
 					if (hover) {
 						distance = 0x96;
 					}
@@ -6236,27 +6233,21 @@ int BuildingClass::Do_MISSION_UNLOAD(void)
 					if (unit) {
 						unit->Assign_Mission(MISSION_MOVE);
 
-						IPersistPtr persist(unit->Locomotion);
-						CLSID clsid;
-						persist->GetClassID(&clsid);
-
-						if (clsid == CLSID_TunnelLocomotion) {
-							IPiggybackPtr piggy(unit->Locomotion);
-							if (piggy != NULL && piggy->Is_Piggybacking()) {
-								piggy->End_Piggyback(&unit->Locomotion);
+						if (unit->Locomotion->Get_Type() == LocomotorType::Tunnel) {
+							if (auto * piggy = dynamic_cast<PiggybackCapable *>(unit->Locomotion.get())) {
+								if (piggy->Is_Piggybacking()) {
+									// Keep alive through the reassignment -- same hazard as
+									// End_Piggyback_If_Possible in foot.cpp.
+									std::unique_ptr<LocomotionClass> keepalive = std::move(unit->Locomotion);
+									piggy->End_Piggyback(unit->Locomotion);
+								}
 							}
-							ILocomotionPtr walk(CLSID_DriveLocomotion);
+							std::unique_ptr<LocomotionClass> walk = Create_Locomotion(LocomotorType::Drive);
 							walk->Link_To_Object(unit);
-							piggy = IPiggybackPtr(walk);
-							if (piggy != NULL) {
-								piggy->Begin_Piggyback(unit->Locomotion);
-								unit->Locomotion = walk;
-								unit->Locomotion->Force_Track(DriveLocomotionClass::OUT_OF_WEAPON_FACTORY, coord);
-							} else {
-								int damage = unit->Strength;
-								unit->Take_Damage(damage, 0, Rule->C4Warhead, NULL, true);
-							}
-						} else if (clsid != CLSID_DriveLocomotion) {
+							dynamic_cast<PiggybackCapable *>(walk.get())->Begin_Piggyback(std::move(unit->Locomotion));
+							unit->Locomotion = std::move(walk);
+							unit->Locomotion->Force_Track(DriveLocomotionClass::OUT_OF_WEAPON_FACTORY, coord);
+						} else if (unit->Locomotion->Get_Type() != LocomotorType::Drive) {
 							unit->Assign_Destination(&Map[Get_Cell() + Cell(3, 1)]);
 						} else {
 							Coord cs;

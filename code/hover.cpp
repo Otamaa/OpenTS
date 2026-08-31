@@ -412,8 +412,9 @@ MoveType HoverLocomotionClass::While_Moving(bool first_pass)
 			TubeClass * tube = Tubes[tubenum];
 			Cell exit = tube->Exit;
 			HeadToCoord = exit.As_Coord();
-			LinkedTo->Advance_Path(1);
+			memcpy((char*)&LinkedTo->Path, (char*)&LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (CONQUER_PATH_MAX-1));
 			LinkedTo->LastPathingCell = HeadToCoord.As_Cell();
+			LinkedTo->Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 			LinkedTo->CurrentTube = tubenum;
 			LinkedTo->CurrentTubeDir = FACING_FIRST;
 			LinkedTo->LastTubeCoord = Map[Adjacent_Cell((Cell)tube->Enter, tube->Dirs[0])].Cell_Coord() - Coord((Cell)tube->Enter) + LinkedTo->PositionCoord;
@@ -514,7 +515,8 @@ MoveType HoverLocomotionClass::While_Moving(bool first_pass)
 			if (LinkedTo->IsLocked) {
 				LinkedTo->Set_Occupy_Bit(HeadToCoord);
 			}
-			LinkedTo->Advance_Path(1);
+			memcpy((char *)&LinkedTo->Path, (char *)&LinkedTo->Path[1], sizeof(LinkedTo->Path[0]) * (CONQUER_PATH_MAX - 1));
+			LinkedTo->Path[CONQUER_PATH_MAX - 1] = FACING_NONE;
 			LinkedTo->LastPathingCell = HeadToCoord.As_Cell();
 			return(ok);
 
@@ -1072,13 +1074,9 @@ void HoverLocomotionClass::Do_Shove(void)
 /// The persistence system uses this identifier to create a locomotor of the right kind
 /// when the object it drives is loaded back in.
 /// </summary>
-/// <param name="retval">Pointer to the identifier to fill in.</param>
-/// <returns>Returns with S_OK, or E_POINTER if no destination was supplied.</returns>
-HRESULT STDMETHODCALLTYPE HoverLocomotionClass::GetClassID(CLSID * retval)
+LocomotorType STDMETHODCALLTYPE HoverLocomotionClass::Get_Type(void) const
 {
-	if (retval == NULL) return(E_POINTER);
-	*retval = CLSID_HoverLocomotion;
-	return(S_OK);
+	return(LocomotorType::Hover);
 }
 
 

@@ -28,7 +28,7 @@ class LevitateLocomotionClass : public LocomotionClass
 		LevitateLocomotionClass(void);
 		virtual ~LevitateLocomotionClass(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
 

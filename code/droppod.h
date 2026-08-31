@@ -13,11 +13,11 @@
 
 #pragma once
 
-#include "ipiggy.h"
 #include "loco.h"
+#include "piggyback_capable.h"
 
 
-class DropPodLocomotionClass : public LocomotionClass, public IPiggyback
+class DropPodLocomotionClass : public LocomotionClass, public PiggybackCapable
 {
 		typedef LocomotionClass BASECLASS;
 
@@ -29,13 +29,9 @@ class DropPodLocomotionClass : public LocomotionClass, public IPiggyback
 		DropPodLocomotionClass(void);
 		virtual ~DropPodLocomotionClass(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
-
-		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, LPVOID * ppvObject) override;
-		virtual ULONG STDMETHODCALLTYPE AddRef(void) override {return(BASECLASS::AddRef());}
-		virtual ULONG STDMETHODCALLTYPE Release(void) override {return(BASECLASS::Release());}
 
 		virtual boolean STDMETHODCALLTYPE Is_Moving(void) override;
 		virtual Coord STDMETHODCALLTYPE Destination(void) override;
@@ -45,10 +41,10 @@ class DropPodLocomotionClass : public LocomotionClass, public IPiggyback
 		virtual LayerType STDMETHODCALLTYPE In_Which_Layer(void) override;
 		virtual int STDMETHODCALLTYPE Drawing_Code(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE Begin_Piggyback(ILocomotion * pointer) override;
-		virtual HRESULT STDMETHODCALLTYPE End_Piggyback(ILocomotion ** pointer) override;
+		virtual HRESULT STDMETHODCALLTYPE Begin_Piggyback(std::unique_ptr<LocomotionClass> inner) override;
+		virtual HRESULT STDMETHODCALLTYPE End_Piggyback(std::unique_ptr<LocomotionClass> & pointer) override;
 		virtual boolean STDMETHODCALLTYPE Is_Ok_To_End(void) override;
-		virtual HRESULT STDMETHODCALLTYPE Piggyback_CLSID(GUID * classid) override;
+		virtual LocomotorType STDMETHODCALLTYPE Piggyback_Type(void) override;
 		virtual boolean STDMETHODCALLTYPE Is_Piggybacking(void) override {return(Piggybacker != NULL);}
 
 	private:
@@ -78,5 +74,5 @@ class DropPodLocomotionClass : public LocomotionClass, public IPiggyback
 		 * handed back the moment the pod touches ground, so that the object resumes moving
 		 * the way its type normally does.
 		 */
-		ILocomotionPtr Piggybacker;
+		std::unique_ptr<LocomotionClass> Piggybacker;
 };

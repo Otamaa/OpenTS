@@ -178,6 +178,7 @@ void MechLocomotionClass::Movement_AI(bool continue_moving)
 
 	if (HeadToCoord == COORD_NONE) {
 		if (DestinationCoord != COORD_NONE) {
+
 			/*
 			 * A destination exists. If there is no current path then try to build
 			 * one. If a path already exists, fall through to dispatch the next leg.
@@ -260,7 +261,8 @@ void MechLocomotionClass::Movement_AI(bool continue_moving)
 					Cell cell = tubeptr->Exit;
 					HeadToCoord = Coord(cell, 0);
 
-					LinkedTo->Advance_Path(1);
+					memcpy(&LinkedTo->Path[0], &LinkedTo->Path[1], 92);
+					LinkedTo->Path[23] = FACING_NONE;
 
 					LinkedTo->CurrentTube = tube;
 					LinkedTo->CurrentTubeDir = FACING_FIRST;
@@ -489,7 +491,8 @@ void MechLocomotionClass::Movement_AI(bool continue_moving)
 				LinkedTo->Path[1] = FACING_NONE;
 			}
 
-			LinkedTo->Advance_Path(1);
+			memcpy(&LinkedTo->Path[0], &LinkedTo->Path[1], 92);
+			LinkedTo->Path[23] = FACING_NONE;
 
 			LinkedTo->Set_Coord(HeadToCoord);
 			LinkedTo->LastPathingCell = HeadToCoord.As_Cell();
@@ -656,13 +659,9 @@ bool MechLocomotionClass::Mark_Head_To(Coord const & coord)
 /// The persistence layer uses this identifier to create a locomotor of the right kind
 /// when a saved game is loaded.
 /// </summary>
-/// <param name="retval">Pointer to the buffer to fill in with the class identifier.</param>
-/// <returns>Returns with S_OK, or E_POINTER if no buffer was supplied.</returns>
-HRESULT STDMETHODCALLTYPE MechLocomotionClass::GetClassID(CLSID * retval)
+LocomotorType STDMETHODCALLTYPE MechLocomotionClass::Get_Type(void) const
 {
-	if (retval == NULL) return(E_POINTER);
-	*retval = CLSID_MechLocomotion;
-	return(S_OK);
+	return(LocomotorType::Mech);
 }
 
 

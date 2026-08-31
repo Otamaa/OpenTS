@@ -119,7 +119,7 @@ TechnoTypeClass::TechnoTypeClass(char const * ininame, SpeedType speed) :
 	CloakingSpeed(7),
 	DebrisTypes(),
 	DebrisMaximums(),
-	Locomotor(CLSID_TeleportLocomotion),
+	Locomotor(LocomotorType::Teleport),
 	VoxelCenterY(0),
 	VoxelCenterX(0),
 	Weight(1),
@@ -501,7 +501,7 @@ bool TechnoTypeClass::Read_INI(CCINIClass const & ini)
 		}
 
 		PitchSpeed = ini.Get_Float(Name(), "PitchSpeed", PitchSpeed);
-		Locomotor = ini.Get_CLSID(IniName, "Locomotor", Locomotor);
+		Locomotor = CLSID_To_LocomotorType(ini.Get_CLSID(IniName, "Locomotor", LocomotorType_To_CLSID(Locomotor)), Locomotor);
 		CloakingSpeed = ini.Get_Int(Name(), "CloakingSpeed", CloakingSpeed);
 		ThreatAvoidanceCoefficient = ini.Get_Float(Name(), "ThreatAvoidanceCoefficient", ThreatAvoidanceCoefficient);
 		SlowdownDistance = ini.Get_Int(Name(), "SlowdownDistance", SlowdownDistance);

@@ -107,10 +107,10 @@
 #include "infatype.h"
 #include "inline.h"
 #include "ion.h"
-#include "ipiggy.h"
 #include "loco.h"
 #include "mono.h"
 #include "partsys.h"
+#include "piggyback_capable.h"
 #include "revent.h"
 #include "rules.h"
 #include "savestream.h"
@@ -134,8 +134,6 @@
 #include "tube.hh"
 
 #include <algorithm>
-#include <cstring>
-#include <iterator>
 
 
 DynamicVectorClass<FootClass *> Feet;
@@ -155,6 +153,32 @@ DynamicVectorClass<FootClass *> Feet;
  * HISTORY:                                                                                    *
  *   11/23/1994 JLB : Created.                                                                 *
  *=============================================================================================*/
+
+
+/// <summary>
+/// Ends a piggyback session on the given locomotor slot, if the locomotor currently held
+/// there supports piggybacking and is willing to end.
+/// Replaces the COM QueryInterface(IID_IPiggyback)-then-End_Piggyback(&owner) pattern.
+/// The keepalive local matters: owner is reassigned to the restored locomotor as part of
+/// this call, which would otherwise destroy the very object piggy belongs to while its own
+/// End_Piggyback is still running -- mirrors the deferred-destruction handling in
+/// DropPodLocomotionClass::Process().
+/// </summary>
+/// <param name="owner">The locomotor slot (e.g. FootClass::Locomotion) to check and end.</param>
+/// <returns>bool; Was a piggyback session actually ended?</returns>
+static bool End_Piggyback_If_Possible(std::unique_ptr<LocomotionClass> & owner)
+{
+	PiggybackCapable * piggy = dynamic_cast<PiggybackCapable *>(owner.get());
+	if (piggy == NULL || !piggy->Is_Ok_To_End()) {
+		return(false);
+	}
+
+	std::unique_ptr<LocomotionClass> keepalive = std::move(owner);
+	piggy->End_Piggyback(owner);
+	return(true);
+}
+
+
 FootClass::FootClass(HouseClass * house) :
 	BASECLASS(house),
 	IsToScatter(false),
@@ -197,7 +221,7 @@ FootClass::FootClass(HouseClass * house) :
 	CurrentTubeDir(0),
 	NextWaypoint(0)
 {
-	std::fill(std::begin(Path), std::end(Path), FACING_NONE);
+	Path[0] = FACING_NONE;
 	Feet.Add(this);
 	TeamPtrTracker.Add(this);
 }
@@ -429,15 +453,12 @@ bool FootClass::Basic_Path(Cell cell, int path_offset, int avoidance)
 	PathStruct		* path;			// Pointer to path control structure.
 	int 			skip_path = false;
 
-	if (path_offset < 0 || path_offset >= ARRAY_SIZE(Path)) {
-		std::fill(std::begin(Path), std::end(Path), FACING_NONE);
-		return(false);
+	if (path_offset == 0) {
+		Path[0] = FACING_NONE;
 	}
 
-	// Keep an existing path prefix, but always terminate the new suffix.
-	std::fill(std::begin(Path) + path_offset, std::end(Path), FACING_NONE);
-
 	if (!Is_In_Same_Zone(cell)) {
+		Path[0] = FACING_NONE;
 		return(false);
 	}
 
@@ -488,6 +509,9 @@ bool FootClass::Basic_Path(Cell cell, int path_offset, int avoidance)
 
 	if (!skip_path) {
 		Mark(MARK_UP);
+		if (path_offset == 0) {
+			Path[0] = FACING_NONE;		// Probably not necessary, but...
+		}
 
 		/*
 		**	Try to find a path to the destination. If a failure occurs, then keep trying
@@ -512,8 +536,7 @@ bool FootClass::Basic_Path(Cell cell, int path_offset, int avoidance)
 		*/
 		if (found) {
 			Fixup_Path(&path1);
-			int length = std::clamp(path->Length, 0, ARRAY_SIZE(Path) - path_offset);
-			memcpy(&Path[path_offset], &workpath[0], length * sizeof(Path[0]));
+			memcpy(&Path[path_offset], &workpath[0], std::min(path->Length, ARRAY_SIZE(Path) - path_offset) * sizeof(Path[0]));
 		}
 
 		Mark(MARK_DOWN);
@@ -583,21 +606,6 @@ bool FootClass::Basic_Path(Cell cell, int path_offset, int avoidance)
 
 	return(false);
 }
-
-/// <summary>
-/// Removes completed steps from the front of the active movement path.
-/// </summary>
-void FootClass::Advance_Path(int count)
-{
-	if (count <= 0) {
-		return;
-	}
-
-	int const advance = std::min(count, ARRAY_SIZE(Path));
-	std::memmove(Path, Path + advance, (ARRAY_SIZE(Path) - advance) * sizeof(Path[0]));
-	std::fill(std::end(Path) - advance, std::end(Path), FACING_NONE);
-}
-
 
 
 /***********************************************************************************************
@@ -1127,10 +1135,7 @@ void FootClass::Approach_Target(void)
 		 */
 		bool flyer = (RTTI == RTTI_AIRCRAFT);
 
-		CLSID clsid;
-		IPersistPtr persist(Locomotion);
-		persist->GetClassID(&clsid);
-		if (clsid == CLSID_JumpjetLocomotion) {
+		if (Locomotion->Get_Type() == LocomotorType::Jumpjet) {
 			flyer = true;
 		}
 
@@ -1869,12 +1874,7 @@ bool FootClass::Enter_Idle_Mode(bool, bool resume_waypoint)
 			Scatter(COORD_NONE, true);
 		}
 
-		bool was_piggybacking = false;
-		IPiggybackPtr piggy(Locomotion);
-		if (piggy != NULL && piggy->Is_Ok_To_End()) {
-			piggy->End_Piggyback(&Locomotion);
-			was_piggybacking = true;
-		}
+		bool was_piggybacking = End_Piggyback_If_Possible(Locomotion);
 
 		if (RouteQueue.Count() > 0) {
 			Assign_Destination(RouteQueue[0], false);
@@ -2326,10 +2326,7 @@ int FootClass::Do_MISSION_ENTER(void)
 			Enter_Idle_Mode();
 		} else {
 			if (NavCom == NULL && RouteQueue.Count() > 0 ) {
-				IPiggybackPtr piggy(Locomotion);
-				if (piggy != NULL && piggy->Is_Ok_To_End()) {
-					piggy->End_Piggyback(&Locomotion);
-				}
+				End_Piggyback_If_Possible(Locomotion);
 				if (RouteQueue.Count() > 0) {
 					Assign_Destination(RouteQueue[0], false);
 					RouteQueue.Delete_Index(0);
@@ -2380,11 +2377,7 @@ void FootClass::Assign_Destination(AbstractClass * target, bool)
 			ParticleSystems[ATTACHED_PARTICLE_FIRE] = NULL;
 		}
 
-		CLSID locoid;
-		IPersistPtr persist(Locomotion);
-		persist->GetClassID(&locoid);
-
-		if (locoid == CLSID_HoverLocomotion && PathDelay == 0) {
+		if (Locomotion->Get_Type() == LocomotorType::Hover && PathDelay == 0) {
 			PathDelay = 1;
 		}
 
@@ -3310,12 +3303,7 @@ void FootClass::AI(void)
 			Scatter(Coord(0,0,0), true);
 		}
 
-		IPiggybackPtr piggy(Locomotion);
-		if (piggy != NULL) {
-			if (piggy->Is_Ok_To_End()) {
-				piggy->End_Piggyback(&Locomotion);
-			}
-		}
+		End_Piggyback_If_Possible(Locomotion);
 
 		IonBlastYDrawOffset = 0;
 
@@ -3512,19 +3500,17 @@ void FootClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(BlockagePathDelay);
 
 	/*
-	 * The locomotor is a COM sub-object rather than a member, so it persists itself onto
-	 * the raw stream through OLE. The one being replaced is released first, since loading
-	 * hands back a fresh interface pointer rather than filling this one in.
+	 * The locomotor persists itself as a type byte followed by its own Serialize() record.
 	 */
 	if (stream.Is_Saving()) {
-		IPersistStreamPtr persist(Locomotion);
-		OleSaveToStream(persist, stream.Get_Stream());
+		uint8_t type = (uint8_t)Locomotion->Get_Type();
+		stream.Get_Stream()->Write(&type, sizeof(type), NULL);
+		Locomotion->Save(stream.Get_Stream(), TRUE);
 	} else {
-		if (Locomotion != NULL) {
-			((ILocomotion *)Locomotion)->Release();
-		}
-		Locomotion.Detach();
-		OleLoadFromStream(stream.Get_Stream(), IID_ILocomotion, (LPVOID *)&Locomotion);
+		uint8_t type;
+		stream.Get_Stream()->Read(&type, sizeof(type), NULL);
+		Locomotion = Create_Locomotion((LocomotorType)type);
+		Locomotion->Load(stream.Get_Stream());
 	}
 
 	stream.Serialize(HeadToCoord);
@@ -3588,13 +3574,13 @@ void FootClass::Set_Coord(Coord const & coord)
 /// </summary>
 void FootClass::Link_DropPod(void)
 {
-	ILocomotionPtr locomotion = Locomotion;
-	ILocomotionPtr ballistic(CLSID_BallisticLocomotion);
+	std::unique_ptr<LocomotionClass> ballistic = Create_Locomotion(LocomotorType::Ballistic);
 	ballistic->Link_To_Object(this);
-	IPiggybackPtr piggy(ballistic);
-	piggy->Begin_Piggyback(locomotion);
-	Locomotion = ballistic;
-
+	// Concrete type is known statically (DropPodLocomotionClass, just constructed above),
+	// so static_cast replaces QueryInterface(IID_IPiggyback) directly -- no ambiguity to
+	// resolve at runtime here, unlike End_Piggyback_If_Possible's arbitrary-locomotor case.
+	dynamic_cast<PiggybackCapable *>(ballistic.get())->Begin_Piggyback(std::move(Locomotion));
+	Locomotion = std::move(ballistic);
 }
 
 
@@ -4727,12 +4713,7 @@ void FootClass::Delete_Me(void)
 /// <returns>bool; Is the object in the air?</returns>
 bool FootClass::In_Air(void) const
 {
-	IPersistPtr loco(Locomotion);
-
-	CLSID clsid;
-	loco->GetClassID(&clsid);
-
-	if (clsid == CLSID_HoverLocomotion) {
+	if (Locomotion->Get_Type() == LocomotorType::Hover) {
 		return(false);
 	}
 
@@ -4751,10 +4732,6 @@ bool FootClass::On_Ground(void) const
 	if (BASECLASS::On_Ground()) {
 		return(true);
 	}
-	IPersistPtr loco(Locomotion);
 
-	CLSID clsid;
-	loco->GetClassID(&clsid);
-
-	return(IsDown && clsid == CLSID_HoverLocomotion);
+	return(IsDown && Locomotion->Get_Type() == LocomotorType::Hover);
 }

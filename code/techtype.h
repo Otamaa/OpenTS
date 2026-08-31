@@ -14,6 +14,7 @@
 #pragma once
 
 #include "_weapon.h"
+#include "locomotor_type.h"
 #include "objtype.h"
 #include "typelist.h"
 
@@ -118,11 +119,11 @@ class TechnoTypeClass : public ObjectTypeClass
 		TypeList<int> DebrisMaximums;
 
 		/*
-		 * This is the class ID of the locomotion object that moves an object of this type
+		 * This is the type of the locomotion object that moves an object of this type
 		 * about. It is what decides whether the object drives, walks, hovers, flies or
 		 * tunnels, and an instance of it is created for every object as it is unlimboed.
 		 */
-		CLSID Locomotor;
+		LocomotorType Locomotor;
 
 		/*
 		 * These are the half extents of this object's voxel model, measured off the artwork

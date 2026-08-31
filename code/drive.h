@@ -35,9 +35,9 @@
 
 #include "face.h"
 #include "ftimer.h"
-#include "ipiggy.h"
 #include "loco.h"
 #include "matrix3d.h"
+#include "piggyback_capable.h"
 #include "timer.h"
 
 #include "mark.hh"
@@ -46,7 +46,7 @@
 **	Movable objects are handled by this class definition. Moveable objects
 **	cover everything except buildings.
 */
-class DriveLocomotionClass : public LocomotionClass, public IPiggyback
+class DriveLocomotionClass : public LocomotionClass, public PiggybackCapable
 {
 		typedef LocomotionClass BASECLASS;
 
@@ -58,13 +58,9 @@ class DriveLocomotionClass : public LocomotionClass, public IPiggyback
 		DriveLocomotionClass(void);
 		virtual ~DriveLocomotionClass(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE GetClassID(CLSID * retval) override;
+		virtual LocomotorType STDMETHODCALLTYPE Get_Type(void) const override;
 
 		virtual void Serialize(SaveStreamClass & stream) override;
-
-		virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, LPVOID * ppvObject) override;
-		virtual ULONG STDMETHODCALLTYPE AddRef(void) override;
-		virtual ULONG STDMETHODCALLTYPE Release(void) override;
 
 		virtual boolean STDMETHODCALLTYPE Is_Moving(void) override;
 		virtual Coord STDMETHODCALLTYPE Destination(void) override;
@@ -90,10 +86,10 @@ class DriveLocomotionClass : public LocomotionClass, public IPiggyback
 		virtual int STDMETHODCALLTYPE Get_Track_Index(void) override;
 		virtual int STDMETHODCALLTYPE Get_Speed_Accum(void) override;
 
-		virtual HRESULT STDMETHODCALLTYPE Begin_Piggyback(ILocomotion * pointer) override;
-		virtual HRESULT STDMETHODCALLTYPE End_Piggyback(ILocomotion ** pointer) override;
+		virtual HRESULT STDMETHODCALLTYPE Begin_Piggyback(std::unique_ptr<LocomotionClass> inner) override;
+		virtual HRESULT STDMETHODCALLTYPE End_Piggyback(std::unique_ptr<LocomotionClass> & pointer) override;
 		virtual boolean STDMETHODCALLTYPE Is_Ok_To_End(void) override;
-		virtual HRESULT STDMETHODCALLTYPE Piggyback_CLSID(GUID * classid) override;
+		virtual LocomotorType STDMETHODCALLTYPE Piggyback_Type(void) override;
 		virtual boolean STDMETHODCALLTYPE Is_Piggybacking(void) override {return(Piggybacker != NULL);}
 
 		/*---------------------------------------------------------------------
@@ -245,7 +241,7 @@ class DriveLocomotionClass : public LocomotionClass, public IPiggyback
 		 * driver answers for it rather than for itself. If NULL, this driver is in sole
 		 * charge of the unit.
 		 */
-		ILocomotionPtr Piggybacker;
+		std::unique_ptr<LocomotionClass> Piggybacker;
 
 		/*---------------------------------------------------------------------
 		**	Member function prototypes.

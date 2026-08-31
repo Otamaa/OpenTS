@@ -121,13 +121,9 @@ boolean STDMETHODCALLTYPE TeleportLocomotionClass::Process(void)
 /// This routine is used by the persistence system to record which locomotor was
 /// written, so that the right one can be created when the save game is loaded.
 /// </summary>
-/// <param name="retval">Pointer to the class identifier to fill in.</param>
-/// <returns>Returns with S_OK, or E_POINTER if no destination was supplied.</returns>
-HRESULT STDMETHODCALLTYPE TeleportLocomotionClass::GetClassID(CLSID * retval)
+LocomotorType STDMETHODCALLTYPE TeleportLocomotionClass::Get_Type(void) const
 {
-	if (retval == NULL) return(E_POINTER);
-	*retval = CLSID_TeleportLocomotion;
-	return(S_OK);
+	return(LocomotorType::Teleport);
 }
 
 

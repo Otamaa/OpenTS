@@ -33,7 +33,8 @@
 #pragma once
 
 #include "ftimer.h"
-#include "iloco.h"
+#include "loco.h"
+#include "locomotor_type.h"
 #include "team.h"
 #include "techno.h"
 
@@ -203,12 +204,12 @@ class FootClass : public TechnoClass
 		CDTimerClass<FrameTimerClass> BlockagePathDelay;
 
 		/*
-		 * This is the locomotor that actually moves the object, created from the class ID
+		 * This is the locomotor that actually moves the object, created from the type
 		 * named by its type. It can be swapped while the game runs -- a falling object is
 		 * handed to a ballistic locomotor and a unit crossing a tunnel walks -- so all
 		 * movement is asked of this interface rather than of the type's setting.
 		 */
-		ILocomotionPtr Locomotion;
+		std::unique_ptr<LocomotionClass> Locomotion;
 
 		/*
 		**	This is the coordinate that the unit is heading to
@@ -385,7 +386,6 @@ class FootClass : public TechnoClass
 		**	Member function prototypes.
 		*/
 		bool Basic_Path(Cell cell, int path_offset = 0, int avoidance = 0);
-		void Advance_Path(int count);
 
 		virtual void Compute_CRC(CRCEngine &) const override;
 		virtual Coord Destination_Coord(void) const override;

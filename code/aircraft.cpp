@@ -220,7 +220,7 @@ AircraftClass::AircraftClass(AircraftTypeClass const * type, HouseClass * house)
 	Create_ID();
 
 	if (Class != NULL) {
-		Locomotion.CreateInstance(Class->Locomotor);
+		Locomotion = Create_Locomotion(Class->Locomotor);
 		Locomotion->Link_To_Object(this);
 	}
 
@@ -1396,8 +1396,7 @@ void AircraftClass::Drop_Off_Cargo(void)
 		unit->IsOnBridge = false;
 	}
 
-	unit->Locomotion.Release();
-	unit->Locomotion = ILocomotionPtr(unit->TClass->Locomotor);
+	unit->Locomotion = Create_Locomotion(unit->TClass->Locomotor);
 	unit->Locomotion->Link_To_Object(unit);
 
 	if (!unit->Unlimbo(coord)) {

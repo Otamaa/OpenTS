@@ -325,16 +325,9 @@ static bool RegisterClasses(void)
 	REGISTER_CLASS(AnimTypeClass, CLSID_AnimTypeClass);
 	REGISTER_CLASS(HouseTypeClass, CLSID_HouseTypeClass);
 	REGISTER_CLASS(HouseClass, CLSID_HouseClass);
-	REGISTER_CLASS(DriveLocomotionClass, CLSID_DriveLocomotion);
-	REGISTER_CLASS(JumpjetLocomotionClass, CLSID_JumpjetLocomotion);
-	REGISTER_CLASS(HoverLocomotionClass, CLSID_HoverLocomotion);
-	REGISTER_CLASS(TunnelLocomotionClass, CLSID_TunnelLocomotion);
-	REGISTER_CLASS(WalkLocomotionClass, CLSID_WalkLocomotion);
-	REGISTER_CLASS(DropPodLocomotionClass, CLSID_BallisticLocomotion);
-	REGISTER_CLASS(FlyLocomotionClass, CLSID_FlyerLocomotion);
-	REGISTER_CLASS(TeleportLocomotionClass, CLSID_TeleportLocomotion);
-	REGISTER_CLASS(MechLocomotionClass, CLSID_MechLocomotion);
-	REGISTER_CLASS(LevitateLocomotionClass, CLSID_LevitateLocomotion);
+	// Locomotor REGISTER_CLASS entries removed -- locomotors are no longer
+	// constructed via CoCreateInstance/class factories, see Create_Locomotion()
+	// in locomotor_type.cpp. LOCOMOTION_COM_REPLACEMENT.md has the full rationale.
 	REGISTER_CLASS(BulletClass, CLSID_BulletClass);
 	REGISTER_CLASS(FactoryClass, CLSID_FactoryClass);
 	REGISTER_CLASS(WarheadTypeClass, CLSID_WarheadTypeClass);

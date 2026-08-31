@@ -107,7 +107,9 @@
 #include "goptions.h"
 #include "house.h"
 #include "houstype.h"
-#include "ilocos.h"
+#include "loco.h"
+#include "locomotor_type.h"
+#include "piggyback_capable.h"
 #include "incdec.h"
 #include "infatype.h"
 #include "inline.h"
@@ -247,7 +249,7 @@ InfantryClass::InfantryClass(InfantryTypeClass const * type, HouseClass * house)
 	Init();
 
 	if (Class != NULL) {
-		Locomotion.CreateInstance(Class->Locomotor, NULL, CLSCTX_ALL);
+		Locomotion = Create_Locomotion(Class->Locomotor);
 		Locomotion->Link_To_Object(this);
 	}
 
@@ -629,11 +631,7 @@ void InfantryClass::Draw_It(Point2D const & xpoint, Rect const & cliprect) const
 	Cell cell = Get_Target_Cell();
 
 	if (CurrentTube == -1) {
-		IPersistPtr persist = Locomotion;
-		CLSID clsid;
-		persist->GetClassID(&clsid);
-
-		if (HeightAGL > 0 && clsid == CLSID_BallisticLocomotion) {
+		if (HeightAGL > 0 && Locomotion->Get_Type() == LocomotorType::Ballistic) {
 			ShapeSet const * shapefile = (ShapeSet const *)MFCD::Retrieve("POD.SHP");
 			Point2D spoint = xpoint + Point2D(Locomotion->Shadow_Point());
 			Draw_Shape(
@@ -1171,10 +1169,7 @@ void InfantryClass::Assign_Destination(AbstractClass * target, bool immediate)
 	}
 
 	if (target != NULL && Class->IsJumpJet && Locomotion->Is_Moving()) {
-		IPersistPtr persist(Locomotion);
-		CLSID clsid;
-		persist->GetClassID(&clsid);
-		if (clsid == CLSID_WalkLocomotion) {
+		if (Locomotion->Get_Type() == LocomotorType::Walk) {
 			NavQueue.Add_Head(target);
 			target = Get_Target_Cell_Ptr();
 			if (target != NULL && ((CellClass *)target)->IsUnderBridge) {
@@ -1187,26 +1182,25 @@ void InfantryClass::Assign_Destination(AbstractClass * target, bool immediate)
 		bool should_fly = Should_JumpJet_Fly(Destination_Coord().As_Cell(), target->Center_Coord().As_Cell());
 		if (Is_JumpJet()) {
 			if (!should_fly) {
-				IPiggybackPtr piggy(Locomotion);
-				if (piggy != NULL) {
+				if (auto * piggy = dynamic_cast<PiggybackCapable *>(Locomotion.get())) {
 					if (piggy->Is_Piggybacking() && piggy->Is_Ok_To_End()) {
-						piggy->End_Piggyback(&Locomotion);
+						// Keep alive through the reassignment -- same hazard as
+						// End_Piggyback_If_Possible in foot.cpp.
+						std::unique_ptr<LocomotionClass> keepalive = std::move(Locomotion);
+						piggy->End_Piggyback(Locomotion);
 					}
 				}
-				ILocomotionPtr walk(CLSID_WalkLocomotion);
+				std::unique_ptr<LocomotionClass> walk = Create_Locomotion(LocomotorType::Walk);
 				walk->Link_To_Object(this);
-				piggy = IPiggybackPtr(walk);
-				if (piggy != NULL) {
-					piggy->Begin_Piggyback(Locomotion);
-					Locomotion = walk;
-				}
+				dynamic_cast<PiggybackCapable *>(walk.get())->Begin_Piggyback(std::move(Locomotion));
+				Locomotion = std::move(walk);
 			}
 		} else {
 			if (should_fly) {
-				IPiggybackPtr piggy(Locomotion);
-				if (piggy != NULL) {
+				if (auto * piggy = dynamic_cast<PiggybackCapable *>(Locomotion.get())) {
 					if (piggy->Is_Piggybacking() && piggy->Is_Ok_To_End()) {
-						piggy->End_Piggyback(&Locomotion);
+						std::unique_ptr<LocomotionClass> keepalive = std::move(Locomotion);
+						piggy->End_Piggyback(Locomotion);
 					}
 				}
 			}
@@ -4187,15 +4181,13 @@ bool InfantryClass::JumpJet_To_Walk(void)
 	if (path_length >= 4) return(false);
 
 	if (Is_JumpJet()) {
-		IPiggybackPtr piggy(Locomotion);
-		if (piggy != NULL && !piggy->Is_Piggybacking()) {
-			ILocomotionPtr walk(CLSID_WalkLocomotion);
-			walk->Link_To_Object(this);
-			piggy = IPiggybackPtr(walk);
-			if (piggy != NULL) {
+		if (auto * piggy = dynamic_cast<PiggybackCapable *>(Locomotion.get())) {
+			if (!piggy->Is_Piggybacking()) {
+				std::unique_ptr<LocomotionClass> walk = Create_Locomotion(LocomotorType::Walk);
+				walk->Link_To_Object(this);
 				Path[0] = FACING_NONE;
-				piggy->Begin_Piggyback(Locomotion);
-				Locomotion = walk;
+				dynamic_cast<PiggybackCapable *>(walk.get())->Begin_Piggyback(std::move(Locomotion));
+				Locomotion = std::move(walk);
 				Locomotion->Move_To(NavCom->Center_Coord());
 				return(true);
 			}
@@ -4230,10 +4222,7 @@ bool InfantryClass::Is_JumpJet(void) const
 		return(false);
 	}
 
-	IPersistPtr persist(Locomotion);
-	CLSID clsid;
-	persist->GetClassID(&clsid);
-	return((clsid == CLSID_JumpjetLocomotion) ? true : false);
+	return(Locomotion->Get_Type() == LocomotorType::Jumpjet);
 }
 
 
