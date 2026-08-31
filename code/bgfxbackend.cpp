@@ -40,6 +40,13 @@ static const bgfx::EmbeddedShader _EmbeddedShaders[] = {
 static const bgfx::ViewId VIEW_PRESCALE = 0;
 static const bgfx::ViewId VIEW_PRESENT = 1;
 
+// STAGE 1 SCAFFOLD: sprites render into their own frame-sized, alpha-clear
+// target in frame pixel space, then that target is composited on top of the
+// CPU frame at the same destination rect/scale mode VIEW_PRESENT already
+// uses for the CPU frame. This keeps sprite placement consistent with the
+// CPU-drawn frame without touching how the CPU frame itself is produced.
+static const bgfx::ViewId VIEW_SPRITES = 2;
+
 
 static bool _Initialized = false;
 
@@ -62,6 +69,13 @@ static unsigned int _ResetFlags = BGFX_RESET_FLIP_AFTER_RENDER;
 static bool _FrameIs565 = false;
 static unsigned int * _ConvertBuffer = NULL;
 static unsigned int _ConvertTable[65536];
+
+// --- GPU sprite atlas / instanced draw support (STAGE 1 SCAFFOLD) ---------
+static bgfx::FrameBufferHandle _SpriteTarget = BGFX_INVALID_HANDLE;
+static int _SpriteTargetWidth = 0;
+static int _SpriteTargetHeight = 0;
+static bool _SpriteFrameActive = false;
+static bool _SpriteFrameHasContent = false;
 
 
 struct BackendVertex
@@ -137,7 +151,7 @@ static void Build_Convert_Table(void)
 /// <summary>
 /// Submits one textured rectangle covering the given destination.
 /// </summary>
-static void Submit_Quad(bgfx::ViewId view, bgfx::TextureHandle texture, float x, float y, float width, float height, unsigned int samplerflags, bool flipv = false)
+static void Submit_Quad(bgfx::ViewId view, bgfx::TextureHandle texture, float x, float y, float width, float height, unsigned int samplerflags, bool flipv = false, bool blend = false)
 {
 	bgfx::TransientVertexBuffer buffer;
 
@@ -162,8 +176,54 @@ static void Submit_Quad(bgfx::ViewId view, bgfx::TextureHandle texture, float x,
 
 	bgfx::setVertexBuffer(0, &buffer);
 	bgfx::setTexture(0, _TextureSampler, texture, samplerflags);
-	bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+
+	uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
+	if (blend) {
+		state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+	}
+	bgfx::setState(state);
 	bgfx::submit(view, _Program);
+}
+
+
+/// <summary>
+/// Discards the frame-sized target the GPU sprite pass renders into.
+/// </summary>
+static void Destroy_Sprite_Target(void)
+{
+	if (bgfx::isValid(_SpriteTarget)) {
+		bgfx::destroy(_SpriteTarget);
+		_SpriteTarget = BGFX_INVALID_HANDLE;
+	}
+	_SpriteTargetWidth = 0;
+	_SpriteTargetHeight = 0;
+}
+
+
+/// <summary>
+/// Makes sure the GPU sprite pass has a frame-sized target with alpha to composite through.
+/// </summary>
+static bool Ensure_Sprite_Target(int width, int height)
+{
+	if (bgfx::isValid(_SpriteTarget) && _SpriteTargetWidth == width && _SpriteTargetHeight == height) {
+		return(true);
+	}
+
+	Destroy_Sprite_Target();
+
+	const bgfx::Caps * caps = bgfx::getCaps();
+	if (width <= 0 || height <= 0 || width > caps->limits.maxTextureSize || height > caps->limits.maxTextureSize) {
+		return(false);
+	}
+
+	_SpriteTarget = bgfx::createFrameBuffer((uint16_t)width, (uint16_t)height, bgfx::TextureFormat::BGRA8, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+	if (!bgfx::isValid(_SpriteTarget)) {
+		return(false);
+	}
+
+	_SpriteTargetWidth = width;
+	_SpriteTargetHeight = height;
+	return(true);
 }
 
 
@@ -338,6 +398,7 @@ void Backend_Shutdown(void)
 	}
 
 	Destroy_Prescale_Target();
+	Destroy_Sprite_Target();
 
 	if (bgfx::isValid(_FrameTexture)) {
 		bgfx::destroy(_FrameTexture);
@@ -504,6 +565,15 @@ void Backend_Present(void const * pixels, int pitch, int destx, int desty, int d
 	bool flipv = from_prescale && bgfx::getCaps()->originBottomLeft;
 	Submit_Quad(VIEW_PRESENT, source, (float)destx, (float)desty, (float)destwidth, (float)destheight, samplerflags, flipv);
 
+	// Composite the GPU sprite layer (if anything was queued this frame) on top of the
+	// CPU frame, at the identical destination rect/scale so sprite placement tracks the
+	// CPU frame's own presentation exactly.
+	if (_SpriteFrameHasContent && bgfx::isValid(_SpriteTarget)) {
+		bool spriteflip = bgfx::getCaps()->originBottomLeft;
+		Submit_Quad(VIEW_PRESENT, bgfx::getTexture(_SpriteTarget), (float)destx, (float)desty, (float)destwidth, (float)destheight, samplerflags, spriteflip, true);
+	}
+	_SpriteFrameHasContent = false;
+
 	bgfx::frame();
 }
 
@@ -517,4 +587,147 @@ char const * Backend_Renderer_Name(void)
 		return("none");
 	}
 	return(bgfx::getRendererName(bgfx::getRendererType()));
+}
+
+
+// --- GPU sprite atlas / instanced draw support (STAGE 1 SCAFFOLD) ---------
+
+/// <summary>
+/// Creates an empty RGBA8 atlas page.
+/// </summary>
+BackendTextureHandle Backend_Create_Atlas_Page(int width, int height)
+{
+	if (!_Initialized || width <= 0 || height <= 0) {
+		return(BACKEND_INVALID_TEXTURE);
+	}
+
+	const bgfx::Caps * caps = bgfx::getCaps();
+	if (width > caps->limits.maxTextureSize || height > caps->limits.maxTextureSize) {
+		return(BACKEND_INVALID_TEXTURE);
+	}
+
+	bgfx::TextureHandle texture = bgfx::createTexture2D((uint16_t)width, (uint16_t)height, false, 1, bgfx::TextureFormat::RGBA8, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+	if (!bgfx::isValid(texture)) {
+		return(BACKEND_INVALID_TEXTURE);
+	}
+
+	return((BackendTextureHandle)texture.idx);
+}
+
+
+/// <summary>
+/// Destroys an atlas page created by Backend_Create_Atlas_Page.
+/// </summary>
+void Backend_Destroy_Atlas_Page(BackendTextureHandle page)
+{
+	if (page == BACKEND_INVALID_TEXTURE) {
+		return;
+	}
+
+	bgfx::TextureHandle texture;
+	texture.idx = (uint16_t)page;
+	if (bgfx::isValid(texture)) {
+		bgfx::destroy(texture);
+	}
+}
+
+
+/// <summary>
+/// Uploads RGBA8 pixel data into a sub-rect of an existing atlas page.
+/// </summary>
+bool Backend_Update_Atlas_Region(BackendTextureHandle page, int x, int y, int width, int height, void const * pixels)
+{
+	if (!_Initialized || page == BACKEND_INVALID_TEXTURE || pixels == NULL || width <= 0 || height <= 0) {
+		return(false);
+	}
+
+	bgfx::TextureHandle texture;
+	texture.idx = (uint16_t)page;
+	if (!bgfx::isValid(texture)) {
+		return(false);
+	}
+
+	uint32_t pitch = (uint32_t)(width * 4);
+	bgfx::updateTexture2D(texture, 0, 0, (uint16_t)x, (uint16_t)y, (uint16_t)width, (uint16_t)height, bgfx::copy(pixels, (uint32_t)(height * (int)pitch)), (uint16_t)pitch);
+	return(true);
+}
+
+
+/// <summary>
+/// Begins the GPU sprite pass for the current frame. Must be paired with
+/// Backend_End_Sprite_Frame and called before Backend_Present for this frame.
+/// </summary>
+void Backend_Begin_Sprite_Frame(void)
+{
+	if (!_Initialized || _FrameWidth <= 0 || _FrameHeight <= 0) {
+		_SpriteFrameActive = false;
+		return;
+	}
+
+	if (!Ensure_Sprite_Target(_FrameWidth, _FrameHeight)) {
+		_SpriteFrameActive = false;
+		return;
+	}
+
+	bgfx::setViewFrameBuffer(VIEW_SPRITES, _SpriteTarget);
+	bgfx::setViewClear(VIEW_SPRITES, BGFX_CLEAR_COLOR, 0x00000000);
+	Set_View_Transform(VIEW_SPRITES, _SpriteTargetWidth, _SpriteTargetHeight);
+
+	_SpriteFrameActive = true;
+}
+
+
+void Backend_End_Sprite_Frame(void)
+{
+	_SpriteFrameActive = false;
+}
+
+
+/// <summary>
+/// Submits one batch of instances, all sampling the same atlas page, into the
+/// GPU sprite pass's frame-sized target.
+/// </summary>
+void Backend_Submit_Sprites(BackendTextureHandle page, BackendSpriteInstance const * instances, int count)
+{
+	if (!_SpriteFrameActive || page == BACKEND_INVALID_TEXTURE || instances == NULL || count <= 0) {
+		return;
+	}
+
+	bgfx::TextureHandle texture;
+	texture.idx = (uint16_t)page;
+	if (!bgfx::isValid(texture)) {
+		return;
+	}
+
+	int vertexcount = count * 6;
+	if (bgfx::getAvailTransientVertexBuffer((uint32_t)vertexcount, _VertexLayout) < (uint32_t)vertexcount) {
+		return;
+	}
+
+	bgfx::TransientVertexBuffer buffer;
+	bgfx::allocTransientVertexBuffer(&buffer, (uint32_t)vertexcount, _VertexLayout);
+	BackendVertex * vertex = (BackendVertex *)buffer.data;
+
+	for (int i = 0; i < count; i++) {
+		BackendSpriteInstance const & inst = instances[i];
+		float x0 = inst.DestX;
+		float y0 = inst.DestY;
+		float x1 = inst.DestX + inst.DestWidth;
+		float y1 = inst.DestY + inst.DestHeight;
+
+		vertex[0] = { x0, y0, inst.U0, inst.V0, inst.TintRGBA };
+		vertex[1] = { x1, y0, inst.U1, inst.V0, inst.TintRGBA };
+		vertex[2] = { x1, y1, inst.U1, inst.V1, inst.TintRGBA };
+		vertex[3] = { x0, y0, inst.U0, inst.V0, inst.TintRGBA };
+		vertex[4] = { x1, y1, inst.U1, inst.V1, inst.TintRGBA };
+		vertex[5] = { x0, y1, inst.U0, inst.V1, inst.TintRGBA };
+		vertex += 6;
+	}
+
+	bgfx::setVertexBuffer(0, &buffer);
+	bgfx::setTexture(0, _TextureSampler, texture, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_POINT);
+	bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA));
+	bgfx::submit(VIEW_SPRITES, _Program);
+
+	_SpriteFrameHasContent = true;
 }
