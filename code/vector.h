@@ -504,6 +504,9 @@ class DynamicVectorClass : public VectorClass<T>
 		// Resets and frees the vector array.
 		void Clear(void) {ActiveCount = 0;BASECLASS::Clear();};
 
+		// Reset the ActiveCount without freeing the vector array
+		void Reset(int count = 0) { ActiveCount = count; };
+
 		// Fetch number of "allocated" vector objects.
 		[[nodiscard]] int Count(void) const noexcept {return(ActiveCount);};
 
