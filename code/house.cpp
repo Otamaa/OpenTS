@@ -2641,6 +2641,13 @@ bool HouseClass::Place_Special_Blast(SuperWeaponType id, Cell const & cell)
 	return(true);
 }
 
+bool HouseClass::Place_Special_Blast(SuperClass* super, Cell const& cell) {
+	if(super->House != this)
+		return false;
+
+	super->Discharged(this == PlayerPtr, cell);
+	return true;
+}
 
 /***********************************************************************************************
  * HouseClass::Place_Object -- Places the object (building) at location specified.             *

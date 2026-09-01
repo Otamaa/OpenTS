@@ -80,6 +80,7 @@ class EventClass
 			ABANDON,        // Abandon production.
 			PRIMARY,        // Primary factory selected.
 			SPECIAL_PLACE,  // Special target location selected
+			SPECIAL_PLACE_DIRECT,
 			EXIT,           // Exit game.
 			ANIMATION,      // Flash ground as movement feedback.
 			REPAIR,         // Repair specified object.
@@ -190,7 +191,10 @@ class EventClass
 				int			ID;
 				xCell			Where;
 			} Special;
-
+			struct {
+				xTargetClass	Whom;
+				xCell			Where;
+			}SpecialDirect;
 			/*
 			**	This structure is used for FRAMEINFO, FRAMESYNC, and RESPONSE_TIME
 			**	events; exactly one of these will be sent each frame, whether there's
@@ -255,6 +259,9 @@ class EventClass
 		EventClass(int index, unsigned char type, int id, Cell const & cell);
 		EventClass(int index, AnimType anim, HousesType owner, Coord const & coord);
 		EventClass(int index, unsigned char type, void *ptr, unsigned int size);
+
+		//new
+		EventClass(int index, unsigned char type, TargetClass ptr, Cell const & cell);
 
 		// Process the event.
 		void Execute(void);

@@ -99,6 +99,7 @@ unsigned char EventClass::EventLength[EventClass::LAST_EVENT] = {
 	size_of(EventClass, Data.Specific ),			// ABANDON
 	size_of(EventClass, Data.Target ),				// PRIMARY
 	size_of(EventClass, Data.Special ),				// SPECIAL_PLACE
+	size_of(EventClass, Data.SpecialDirect),			// SPECIAL_PLACE_DIRECT
 	0,												// EXIT
 	size_of(EventClass, Data.Anim ),				// ANIMATION
 	size_of(EventClass, Data.Target ),				// REPAIR
@@ -138,6 +139,7 @@ char const * EventClass::EventNames[EventClass::LAST_EVENT] = {
 	"ABANDON",
 	"PRIMARY",
 	"SPECIAL_PLACE",
+	"SPECIAL_PLACE_DIRECT",
 	"EXIT",
 	"ANIMATION",
 	"REPAIR",
@@ -564,7 +566,6 @@ EventClass::EventClass(int index, unsigned char type, RTTIType object, Cell cons
 EventClass::EventClass(int index, unsigned char type, int id, Cell const & cell)
 {
 	DebugString("Adding event %s\n", EventNames[type]);
-
 	if (index >= 0) {
 		ID = index;
 		Type = type;
@@ -603,6 +604,39 @@ EventClass::EventClass(int index, unsigned char type, void * ptr, unsigned int s
 		Type = type;
 		Data.Variable.Pointer = ptr;
 		Data.Variable.Size = size;
+		Frame = ::Frame;
+	} else {
+		ID = -1;
+		Type = EMPTY;
+		Frame = ::Frame;
+	}
+}
+
+
+/***********************************************************************************************
+ * EventClass::EventClass -- construct a variable-sized event                                  *
+ *                                                                                             *
+ * INPUT:                                                                                      *
+ *      ptr      Target to data associated with this event                                        *
+ *                                                                                             *
+ * OUTPUT:                                                                                     *
+ *      none.                                                                                  *
+ *                                                                                             *
+ * WARNINGS:                                                                                   *
+ *      none.                                                                                  *
+ *                                                                                             *
+ * HISTORY:                                                                                    *
+ *   01/09/2026 OTAMAA : Created.                                                                 *
+ *=============================================================================================*/
+EventClass::EventClass(int index, unsigned char type, TargetClass ptr, Cell const & cell)
+{
+	DebugString("Adding event %s\n", EventNames[type]);
+
+	if (index >= 0) {
+		ID = index;
+		Type = type;
+		Data.SpecialDirect.Whom = ptr;
+		Data.SpecialDirect.Where = cell;
 		Frame = ::Frame;
 	} else {
 		ID = -1;
@@ -1051,6 +1085,12 @@ void EventClass::Execute(void)
 			house->Place_Special_Blast((SuperWeaponType)Data.Special.ID, Cell(Data.Special.Where.X, Data.Special.Where.Y));
 			break;
 
+		case SPECIAL_PLACE_DIRECT:
+		{
+			auto _super = (SuperClass*)Data.SpecialDirect.Whom.As_Abstract();
+			house->Place_Special_Blast(_super, Cell(Data.SpecialDirect.Where.X, Data.SpecialDirect.Where.Y));
+			break;
+		}
 		/*
 		**	Exit the game.
 		**	Give parting message while palette is fading to black.
