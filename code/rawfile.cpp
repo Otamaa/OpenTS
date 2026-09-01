@@ -473,7 +473,17 @@ int RawFileClass::Read(void * buffer, int size)
 			size -= bytesread;
 			total += bytesread;
 			Error(GetLastError(), true, Filename);
-			continue;
+
+			/*
+			**	BUGFIX: Error() is a no-op in this codebase (no retry dialog, no fatal
+			**	exit()), so falling through to "continue" here retried the identical
+			**	failing ReadFile call forever -- an unconditional hang on any genuine
+			**	I/O error (media removed mid-read, truncated/locked file, etc). Bail
+			**	out with whatever was read so far instead, matching the same choice
+			**	already made in Open() (return false rather than loop on a no-op
+			**	Error()).
+			*/
+			break;
 		}
 		buffer = (char *)buffer + bytesread;
 		size -= bytesread;

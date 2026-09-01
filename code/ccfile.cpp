@@ -466,14 +466,48 @@ int CCFileClass::Open(int rights)
 			**	anything hooked into CDFileClass::Set_Name) would see the swapped name. Going
 			**	straight to RawFileClass bypasses CCFileClass/CDFileClass entirely for the
 			**	container open, so this->Filename is never mutated in between.
+			**
+			**	BUGFIX: mixfile->Filename is only the name this mixfile happened to be
+			**	registered under -- it is NOT guaranteed to be a real file on disk. The original
+			**	game genuinely nests mixfiles (a smaller mix packed inside a larger deployment
+			**	mix, e.g. "conquer.mix" packed inside "ra2md.mix"). If the immediate container
+			**	fails to open as-is, walk up the chain of containers via repeated MFCD::Offset
+			**	lookups, composing the byte offset at each level, until one is found that
+			**	actually opens. This mirrors what the pre-fix recursive dispatch was attempting,
+			**	but composes the offset correctly instead of letting an outer Bias(0) wipe out
+			**	the inner level's bias. VERIFY: intermediate containers that are themselves
+			**	fully RAM-cached (MFCD::Data != NULL) are not handled here -- that case falls
+			**	through to a failed open rather than reading out of the cached buffer, since it
+			**	hasn't come up in practice; flag if it's ever needed.
 			*/
 			char * dupfile = strdup(File_Name());
-			RawFileClass::Set_Name(mixfile->Filename);
-			RawFileClass::Open(READ);
+
+			char const * containerName = mixfile->Filename;
+			long long cumulativeStart = start;
+
+			RawFileClass::Set_Name(containerName);
+			int opened = RawFileClass::Open(READ);
+
+			for (int guard = 0; !opened && guard < 16; ++guard) {
+				MFCD * parentMix = NULL;
+				void * parentPointer = NULL;
+				int parentStart = 0;
+
+				if (!MFCD::Offset(containerName, &parentPointer, &parentMix, &parentStart, NULL)
+					|| parentMix == NULL || parentPointer != NULL) {
+					break;
+				}
+
+				cumulativeStart += parentStart;
+				containerName = parentMix->Filename;
+				RawFileClass::Set_Name(containerName);
+				opened = RawFileClass::Open(READ);
+			}
+
 			RawFileClass::Set_Name(dupfile);
 			free(dupfile);
 			Bias(0);
-			Bias(start, length);
+			Bias((int)cumulativeStart, length);
 			Seek(0, SEEK_SET);
 		} else {
 			new (&Data) ::Buffer(pointer, length);
