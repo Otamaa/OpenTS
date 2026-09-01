@@ -453,12 +453,24 @@ int CCFileClass::Open(int rights)
 			**	file object will be appropriately adjusted for mixfile support however. Also
 			**	note that the filename attached to this object is NOT the same as the file
 			**	attached to the file handle.
+			**
+			**	BUGFIX: The container mix is opened straight through RawFileClass::Set_Name()/
+			**	Open() rather than through the unqualified Open(mixfile->Filename, READ) call.
+			**	That call virtually re-entered CCFileClass::Open(char const*, int), which itself
+			**	calls CDFileClass::Set_Name() (Capture_Name + a fresh MFCD::Offset lookup) and
+			**	recurses back into CCFileClass::Open(int). For the full duration of that nested
+			**	call, this->Filename was the mix container's name (e.g. "expandmd99.mix") instead
+			**	of the file actually being requested (e.g. "Rulesmd.ini"), and only got restored
+			**	afterward. Any reentrant code observing File_Name() on this object during that
+			**	window (nested mix-in-mix lookups, Error() calls from within the nested open,
+			**	anything hooked into CDFileClass::Set_Name) would see the swapped name. Going
+			**	straight to RawFileClass bypasses CCFileClass/CDFileClass entirely for the
+			**	container open, so this->Filename is never mutated in between.
 			*/
 			char * dupfile = strdup(File_Name());
-			Open(mixfile->Filename, READ);
-			Searching(false);				// Disable multi-drive search.
-			Set_Name(dupfile);
-			Searching(true);
+			RawFileClass::Set_Name(mixfile->Filename);
+			RawFileClass::Open(READ);
+			RawFileClass::Set_Name(dupfile);
 			free(dupfile);
 			Bias(0);
 			Bias(start, length);
