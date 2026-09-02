@@ -8391,7 +8391,8 @@ void BuildingClass::Disconnect_Laser_Fence(FacingType dir, bool explode)
 				if (explode) {
 					Coord coord = building->Center_Coord();
 					Combat_Lighting(coord, building->Strength, Rule->C4Warhead, false);
-					building->Take_Damage(building->Strength, 0, Rule->C4Warhead, NULL, true, true);
+					auto strength = building->Get_Strength();
+					building->Take_Damage(strength, 0, Rule->C4Warhead, NULL, true, true);
 				} else {
 					building->Delete_Me();
 				}
@@ -8590,7 +8591,8 @@ void BuildingClass::Toggle_Laser_Fence_Post(bool force)
 						if (rtti > RTTI_NONE && (rtti <= RTTI_AIRCRAFT || rtti == RTTI_INFANTRY)) {
 							ObjectClass * next = occupier->Next;
 							if (occupier->Strength > 0) {
-								occupier->Take_Damage(occupier->Strength, 0, Rule->C4Warhead, building, true, true);
+								auto occstrength = occupier->Get_Strength();
+								occupier->Take_Damage(occstrength, 0, Rule->C4Warhead, building, true, true);
 							}
 							occupier = next;
 						} else {
@@ -9422,7 +9424,8 @@ bool BuildingClass::Crossing_Firestorm(ObjectClass * object, bool do_damage)
 {
 	if (object && object->Strength > 0) {
 		if (do_damage) {
-			object->Take_Damage(object->Strength, 0, Rule->FirestormWarhead, NULL, true, true);
+			auto objstrength = object->Get_Strength();
+			object->Take_Damage(objstrength, 0, Rule->FirestormWarhead, NULL, true, true);
 		}
 		if (object->HeightAGL > 100) {
 			new AnimClass(Rule->FirestormAirAnim, object->PositionCoord, 0, 1, ShapeFlags_Type(SHAPE_WIN_REL|SHAPE_CENTER), -10);

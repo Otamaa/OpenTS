@@ -60,7 +60,6 @@
 #include "threat.hh"
 #include "zgrad.hh"
 
-
 class ParticleSystemClass;
 class WaveClass;
 class WeaponTypeClass;
@@ -479,6 +478,13 @@ class TechnoClass :	public RadioClass,
 		 */
 		float LimpetSpeedFactor;
 
+		/*
++		 * This is the entt entity backing of object's item slots (see
++		 * itemslot.h). entt::null when no ItemSlotComponent exists yet --
++		 * i.e. before TechnoClass::Init runs, or after ItemSlot::Release.
++		 * Never dereferenced here; TechnoClass only carries the handle.
++		 */
+		entt::entity ItemSlotEntity = entt::null;
 		/*---------------------------------------------------------------------
 		**	Constructors, Destructors, and overloaded operators.
 		*/

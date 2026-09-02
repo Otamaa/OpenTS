@@ -78,3 +78,4 @@ EXTERN_C const CLSID CLSID_NeuronClass;
 EXTERN_C const CLSID CLSID_FoggedObjectClass;
 EXTERN_C const CLSID CLSID_AlphaShapeClass;
 EXTERN_C const CLSID CLSID_VeinholeMonsterClass;
+EXTERN_C const CLSID CLSID_ItemClass;

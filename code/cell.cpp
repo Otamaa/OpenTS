@@ -1420,7 +1420,8 @@ void CellClass::Destroy_Bridge(void)
 		ObjectClass * occupier = Cell_Occupier();
 		while (occupier != NULL) {
 			ObjectClass * next = occupier->Next;
-			occupier->Take_Damage(occupier->Strength, 0, Rule->C4Warhead, NULL, true, true);
+			auto occupier_strength = occupier->Strength;
+			occupier->Take_Damage(occupier_strength, 0, Rule->C4Warhead, NULL, true, true);
 			occupier = next;
 		}
 

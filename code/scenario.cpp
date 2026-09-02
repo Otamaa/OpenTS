@@ -157,8 +157,9 @@
 #include "wave.h"
 #include "waypoint.h"
 #include "wsproto.h"
-
+#include "itemslot.h"
 #include "bench.hh"
+#include "itemclass.h"
 
 #include <algorithm>
 
@@ -948,6 +949,15 @@ void Clear_Scenario(void)
 
 	LightSourceClass::Recalc = true;
 
+	// fail-safe full sweep of the item-slot registry. Every
+	// TechnoClass just deleted above should already have released its own
+	// entity via Detach_This_From_All (see tracker.cpp) as part of its own
+	// destruction path; this call exists so a scenario reload can never
+	// leak entities into the next map even if some destruction path skips
+	// that call.
+	ItemSlot::Clear_All();
+	ItemClass::Clear_All();
+
 	while (TagTypes.Count()) {
 		delete TagTypes[0];
 	}
@@ -995,6 +1005,7 @@ void Clear_Scenario(void)
 	Scen->UniqueID = 1000 * 1000;
 
 	Set_Speech_State(true);
+
 }
 
 

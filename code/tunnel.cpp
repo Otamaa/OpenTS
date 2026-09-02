@@ -150,7 +150,8 @@ void STDMETHODCALLTYPE TunnelLocomotionClass::Stop_Moving(void)
 				}
 
 				if (nearby == CELL_NONE) {
-					LinkedTo->Take_Damage(LinkedTo->Strength, 0, Rule->C4Warhead, NULL, true, true);
+					auto lnkdstrength = LinkedTo->Strength;
+					LinkedTo->Take_Damage(lnkdstrength, 0, Rule->C4Warhead, NULL, true, true);
 					DestinationCoord = COORD_NONE;
 				} else {
 					DestinationCoord = nearby;
@@ -372,7 +373,8 @@ void TunnelLocomotionClass::Process_Tunneling(void)
 			}
 
 			if (cell == CELL_NONE) {
-				LinkedTo->Take_Damage(LinkedTo->Strength, 0, Rule->C4Warhead, NULL, true, true);
+				auto lnkdstrength = LinkedTo->Strength;
+				LinkedTo->Take_Damage(lnkdstrength, 0, Rule->C4Warhead, NULL, true, true);
 				return;
 			}
 

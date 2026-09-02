@@ -156,6 +156,7 @@
 #include "wwfont.h"
 #include "wwmouse.h"
 #include "zbuffer.h"
+#include "itemclass.h"
 
 #include <shellapi.h>
 
@@ -527,6 +528,10 @@ int CALLBACK WinMain ( HINSTANCE instance , HINSTANCE , char * , int command_sho
 	if (RegisterClasses()) {
 		exit(EXIT_FAILURE);
 	}
+
+	// replace ItemSlot's inert default drop callback with one
+	// that actually spawns a world pickup.
+	ItemClass::Install_As_Drop_Callback();
 
 	/*
 	**	Get the full path to the .EXE

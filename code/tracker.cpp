@@ -49,6 +49,8 @@
 #include "tactical.h"
 #include "unit.h"
 #include "vector.h"
+#include "itemslot.h"
+#include "techno.h"
 
 #include <typeinfo>
 
@@ -138,6 +140,12 @@ void Detach_This_From_All(AbstractClass const * target, bool all)
 		if (TacticalMap != NULL) {
 			TacticalMap->Detach(target, true);
 		}
+
+		// if the object being detached is itself a TechnoClass,
+		// this is the guaranteed pre-death/pre-limbo cleanup point (per the
+		// function's own doc comment above) -- release its item-slot entity
+		// here rather than relying solely on ~TechnoClass.
+		ItemSlot::Release(target->As_TechnoClass());
 		Logic.Detach(target, all);
 		/*
 		 * nothing else needs to be done

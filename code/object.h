@@ -199,6 +199,11 @@ class ObjectClass : public AbstractClass
 		*/
 		Coord Position;
 
+		/*
+		* entity slot for this abstract
+		*/
+		entt::entity EntitySlot;
+
 		/*-----------------------------------------------------------------------------------
 		**	Constructor & destructors.
 		*/
@@ -288,6 +293,20 @@ class ObjectClass : public AbstractClass
 		void Set_Health_Ratio(double health);
 
 		__declspec( property( get=Get_Health_Ratio, put=Set_Health_Ratio ) ) double HealthRatio;
+
+		double Get_Health_Percent(void) const;
+		void Set_Health_Percent(double health);
+
+		__declspec( property( get=Get_Health_Percent, put=Set_Health_Percent ) ) double HealthPercent;
+
+
+		int Get_Strength(void) const;
+		void Set_Strength(int strength);
+
+		/*
+		**	This is the current strength of this object.
+		*/
+		__declspec( property( get=Get_Strength, put=Set_Strength ) ) int Strength;
 
 		virtual void Draw_Pre_Render(Point2D const & point, Rect const & cliprect) const { }
 		virtual void Draw_Post_Render(Point2D const & point, Rect const & cliprect) const { }

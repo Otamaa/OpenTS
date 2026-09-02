@@ -217,7 +217,8 @@ void STDMETHODCALLTYPE JumpjetLocomotionClass::Stop_Moving(void)
 			}
 			Move_To(nearby_coord);
 		} else {
-			LinkedTo->Take_Damage(LinkedTo->Strength, 0, Rule->C4Warhead, NULL, true, true);
+			auto lnkdstrength = LinkedTo->Strength;
+			LinkedTo->Take_Damage(lnkdstrength, 0, Rule->C4Warhead, NULL, true, true);
 			HeadToCoord = COORD_NONE;
 		}
 	}

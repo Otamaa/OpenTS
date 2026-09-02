@@ -309,7 +309,8 @@ void STDMETHODCALLTYPE FlyLocomotionClass::Stop_Moving(void)
 			}
 		} else {
 			if (LinkedTo->Strength > 0) {
-				LinkedTo->Take_Damage(LinkedTo->Strength, 0, Rule->C4Warhead, NULL, true, true);
+				auto lnkdstrength = LinkedTo->Get_Strength();
+				LinkedTo->Take_Damage(lnkdstrength, 0, Rule->C4Warhead, NULL, true, true);
 				DestinationCoord = COORD_NONE;
 			}
 		}
@@ -527,7 +528,8 @@ void FlyLocomotionClass::Movement_AI(void)
 				Explosion_Damage(newcoord, FORCED_DESTRUCTION_DAMAGE, NULL, Rule->C4Warhead, true);
 				LinkedTo->Delete_Me();
 			} else {
-				LinkedTo->Take_Damage(LinkedTo->Strength, 0, Rule->C4Warhead, NULL, true, true);
+				auto lnkdstrength = LinkedTo->Get_Strength();
+				LinkedTo->Take_Damage(lnkdstrength, 0, Rule->C4Warhead, NULL, true, true);
 				Cell cell = newcoord.As_Cell();
 
 				new AnimClass(Combat_Anim(damage, Rule->C4Warhead, Map[cell].Land_Type(), newcoord), newcoord, 0, 1, ShapeFlags_Type(SHAPE_CENTER | SHAPE_WIN_REL | SHAPE_ZGRAD), Get_Explosion_Z(newcoord));
@@ -987,7 +989,8 @@ bool FlyLocomotionClass::Process_Landing(void)
 	}
 
 	if (!ok) {
-		LinkedTo->Take_Damage(LinkedTo->Strength, 0, Rule->C4Warhead, NULL, true, true);
+		auto lnkdstrength = LinkedTo->Get_Strength();
+		LinkedTo->Take_Damage(lnkdstrength, 0, Rule->C4Warhead, NULL, true, true);
 		DestinationCoord = COORD_NONE;
 		return(false);
 	}

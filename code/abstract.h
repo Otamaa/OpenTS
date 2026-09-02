@@ -39,6 +39,8 @@
 #include "house.hh"
 #include "rtti.hh"
 
+#include <entt/entity/entity.hpp>
+
 #include <comdef.h>
 
 class AbstractTypeClass;

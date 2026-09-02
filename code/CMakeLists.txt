@@ -154,6 +154,18 @@ target_include_directories(OpenTS PRIVATE
     "${OPENTS_GENERATED_DIR}"
 )
 
+# EnTT is the engine's entity-component framework and is exposed to the binary through
+# whichever target the upstream package provides.
+if(TARGET EnTT::EnTT)
+    set(OPENTS_ENTT_TARGET EnTT::EnTT)
+elseif(TARGET EnTT)
+    set(OPENTS_ENTT_TARGET EnTT)
+else()
+    message(FATAL_ERROR "OpenTS requires EnTT as a third-party dependency.")
+endif()
+
+target_link_libraries(OpenTS PRIVATE ${OPENTS_ENTT_TARGET})
+
 # The generated build stamp has to exist before anything compiles.
 add_dependencies(OpenTS OpenTSBuildStamp)
 

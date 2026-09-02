@@ -73,8 +73,9 @@
 #include "vanim.h"
 #include "vein.h"
 #include "wave.h"
-
+#include "itemslot.h"
 #include "bench.hh"
+#include "itemclass.h"
 
 #include <algorithm>
 
@@ -339,6 +340,14 @@ void LogicClass::AI(void)
 	TiberiumClass::Tiberium_Growth();
 	TiberiumClass::Tiberium_Spread();
 	Map.Ice_Solidification_AI();
+
+	// single global item-slot pass -- see the design note on
+	// ItemSlot::AI_Pass in itemslot.cpp for why this lives here instead of
+	// TechnoClass::AI (short version: TechnoClass::AI is overridden by every
+	// concrete subclass; this follows the existing pattern of the other
+	// singleton updates already grouped in this exact spot).
+	ItemSlot::AI_Pass();
+	ItemClass::Update_All();
 
 	DynamicVectorClass<TeamClass *> teams;
 	for (index = 0; index < Teams.Count(); index++) {

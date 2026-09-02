@@ -39,6 +39,11 @@ For a fresh clone, use `git clone --recurse-submodules`. Configuration stops
 with instructions if the submodule is missing. Update the pinned tag in a
 separate change.
 
+The engine also uses [EnTT](https://github.com/skypjack/entt) for its
+entity-component work. If a local `thirdparty/entt` checkout is not present,
+CMake fetches the pinned release during configure and exposes it as
+`EnTT::EnTT` for the engine targets.
+
 ## Configure and build
 
 Run these commands from the repository root in PowerShell:

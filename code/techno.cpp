@@ -132,6 +132,8 @@
 
 #include "techno.h"
 
+#include "itemslot.h"
+
 #include "_bench.h"
 #include "_convert.h"
 #include "_keyboar.h"
@@ -204,6 +206,7 @@
 
 #include "bench.hh"
 #include "tube.hh"
+#include "itemclass.h"
 
 #include <algorithm>
 
@@ -753,6 +756,12 @@ void TechnoClass::Init(void)
 			IsOwnedByPlayer = false;
 		}
 	}
+
+	// Create this object's item-slot entity. Init() runs exactly
+	// once, from the concrete subclass's constructor (UnitClass, BuildingClass,
+	// InfantryClass, AircraftClass), so this is the single creation point for
+	// every TechnoClass-derived instance regardless of how it was spawned.
+	ItemSlot::Attach(this);
 }
 
 
@@ -1700,6 +1709,9 @@ bool TechnoClass::Limbo(void)
 			}
 		}
 	}
+
+	// Pause the item-slot AI pass while this object is off-map.
+	ItemSlot::On_Limbo(this);
 	return(BASECLASS::Limbo());
 }
 
@@ -1730,6 +1742,10 @@ bool TechnoClass::Unlimbo(Coord const & coord, Dir256 dir)
 		if (!IsActive) {
 			return(true);
 		}
+
+		// Resume the item-slot AI pass now that this object is
+		// back on-map.
+		ItemSlot::On_Unlimbo(this);
 
 		House->Tracking_Active_Add(this, false);
 		PrimaryFacing.Set(dir);
@@ -4878,7 +4894,8 @@ bool TechnoClass::Captured(HouseClass * newowner)
 		*/
 		House = newowner;
 		IsOwnedByPlayer = (House == PlayerPtr);
-
+		// Notify the item-slot system of the ownership change.
+		ItemSlot::On_Captured(this, newowner);
 		newowner->Tracking_Active_Add(this, true);
 
 		if (!IsInLimbo) {
@@ -5032,6 +5049,11 @@ ResultType TechnoClass::Take_Damage(int & damage, int distance, WarheadTypeClass
 				ParticleSystems[0]->Delete_Me();
 				ParticleSystems[0] = NULL;
 			}
+
+			// Drop any DropOnDeath items before the rest of the
+			// destruction sequence runs. Placed before the water/splash
+			// early-out below so it isn't skipped by that `break`.
+			ItemSlot::Drop_On_Death(this);
 
 			/*
 			 * If destroyed while in/near the water and flagged to explode, bail out so the
@@ -8267,6 +8289,11 @@ void TechnoClass::Serialize(SaveStreamClass & stream)
 	// TalkBubbleOwner
 	// TalkBubbleTimer
 	// BodyShape
+
+	// Item slots. Serializes slot contents as plain data, not the
+	// entt::entity handle (entity IDs are only meaningful within one
+	// process's registry and must never be persisted across a save).
+	ItemSlot::Serialize(this, stream);
 }
 
 
@@ -8321,6 +8348,11 @@ void TechnoClass::Compute_CRC(CRCEngine & crc) const
 	crc(Unused1);
 	crc(SightIncrease);
 	crc((int)LimpetType);
+
+	//item slots participate in desync detection too -- a stat
+	// multiplier is gameplay-relevant state, same as ArmorBias/FirepowerBias
+	// two lines up.
+	ItemSlot::Compute_CRC(this, crc);
 }
 
 

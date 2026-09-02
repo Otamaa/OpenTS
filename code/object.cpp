@@ -130,12 +130,40 @@
 #include "tagtype.h"
 #include "tracker.h"
 
+#include "itemslot.h"
+
 #include <algorithm>
 #include <cassert>
 
 
 #define	GRAVITY	1.4
 
+namespace ObjectEntity
+{
+	entt::registry & Registry_Impl(void)
+	{
+		static entt::registry registry;
+		return(registry);
+	}
+}
+
+struct TransformComponent
+{
+    Coord Position;
+
+	void Serialize(SaveStreamClass& stream) {
+		stream.Serialize(Position);
+	}
+};
+
+struct ObjectHealthComponent
+{
+	int Strength;
+
+	void Serialize(SaveStreamClass& stream) {
+		stream.Serialize(Strength);
+	}
+};
 
 /***********************************************************************************************
  * ObjectClass::ObjectClass -- Default constructor for objects.                                *
@@ -171,9 +199,12 @@ ObjectClass::ObjectClass(void) :
 	Riser(0,0,0),
 	Next(NULL),
 	Tag(NULL),
-	Strength(255),
+	EntitySlot(entt::null),
 	Position(COORD_NONE)
 {
+	EntitySlot = ObjectEntity::Registry_Impl().create();
+	auto& component = ObjectEntity::Registry_Impl().emplace<ObjectHealthComponent>(EntitySlot);
+	component.Strength = 255;
 	Objects.Add(this);
 	ObjectPtrTracker.Add(this);
 	AbstractTypePtrTracker.Add(this);
@@ -193,6 +224,12 @@ ObjectClass::~ObjectClass(void)
 	ObjectPtrTracker.Delete(this);
 	AbstractTypePtrTracker.Delete(this);
 	TagPtrTracker.Delete(this);
+
+	if(ObjectEntity::Registry_Impl().valid(EntitySlot)) {
+		ObjectEntity::Registry_Impl().destroy(EntitySlot);
+	}
+
+	EntitySlot = entt::null;
 
 	Next = NULL;
 	IsActive = false;
@@ -2042,6 +2079,39 @@ void ObjectClass::Set_Health_Ratio(double health)
 	}
 }
 
+double ObjectClass::Get_Health_Percent(void) const
+{
+	assert(this != NULL);
+
+	return((double)Strength / Class_Of()->MaxStrength * 100.0);
+}
+
+void ObjectClass::Set_Health_Percent(double health)
+{
+	assert(this != NULL);
+
+	if (health > 0) {
+		Strength = (int)(Class_Of()->MaxStrength * health / 100.0);
+		if (Strength == 0) Strength = 1;
+	} else {
+		Strength = 0;
+	}
+}
+
+int ObjectClass::Get_Strength(void) const
+{
+	assert(EntitySlot != entt::null);
+
+	auto& health_component = ObjectEntity::Registry_Impl().get<ObjectHealthComponent>(EntitySlot);
+	return(health_component.Strength);
+}
+
+void ObjectClass::Set_Strength(int strength)
+{
+	assert(EntitySlot != entt::null);
+	auto& health_component = ObjectEntity::Registry_Impl().get<ObjectHealthComponent>(EntitySlot);
+	health_component.Strength = strength;
+}
 
 /// <summary>
 /// Lists the members every game object carries.
@@ -2054,7 +2124,12 @@ void ObjectClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(Riser);
 	stream.Serialize(Next);
 	stream.Serialize(Tag);
-	stream.Serialize(Strength);
+
+	assert(EntitySlot != entt::null);
+
+	auto& health_component = ObjectEntity::Registry_Impl().get<ObjectHealthComponent>(EntitySlot);
+	health_component.Serialize(stream);
+
 	stream.Serialize(IsDown);
 	stream.Serialize(IsToDamage);
 	stream.Serialize(IsToDisplay);

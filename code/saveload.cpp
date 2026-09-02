@@ -132,6 +132,7 @@
 #include "wave.h"
 #include "waypoint.h"
 #include "weapon.h"
+#include "itemclass.h"
 
 #include <string>
 
@@ -612,6 +613,11 @@ static bool Put_All(IStream *stream, int save_net)
 		DebugString("\t***** FAILED!\n");
 		return(false);
 	}
+	DebugString("Saving ItemClasses\n");
+	if (!ItemClass::Save_All(stream)) {
+		DebugString("\t***** FAILED!\n");
+		return(false);
+	}
 	DebugString("Saving RadarEvents\n");
 	if (!RadarEventClass::Save(stream)) {
 		DebugString("\t***** FAILED!\n");
@@ -868,6 +874,11 @@ static bool Get_All(IStream *stream, bool save_net)
 	if (!VeinholeMonsterClass::Load_All(stream)) {
 		return(false);
 	}
+
+	if (!ItemClass::Load_All(stream)) {
+		return(false);
+	}
+
 	if (!RadarEventClass::Load(stream)) {
 		return(false);
 	}

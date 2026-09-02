@@ -2063,7 +2063,8 @@ void FootClass::Per_Cell_Process(PCPType why)
 			if (building->Class->IsLaserFence && building->LaserFenceFrame < 8) {
 				RTTIType rtti = RTTI;
 				if (rtti > RTTI_NONE && (rtti <= RTTI_AIRCRAFT || rtti == RTTI_INFANTRY) && Strength > 0) {
-					Take_Damage(Strength, 0, Rule->C4Warhead, building, true, true);
+					auto bldstrength = Strength;
+					Take_Damage(bldstrength, 0, Rule->C4Warhead, building, true, true);
 				}
 			}
 		}

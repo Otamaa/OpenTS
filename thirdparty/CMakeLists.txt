@@ -1,5 +1,37 @@
 #
 # ---------------------------------------------------------
+# EnTT (entity-component framework)
+# ---------------------------------------------------------
+#
+include(FetchContent)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/entt/CMakeLists.txt")
+    add_subdirectory(entt)
+else()
+    set(ENTT_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(ENTT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ENTT_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+    set(ENTT_BUILD_PACKAGE OFF CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+        EnTT
+        GIT_REPOSITORY "https://github.com/skypjack/entt.git"
+        GIT_TAG "v3.13.2"
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(EnTT)
+endif()
+
+if(TARGET EnTT AND NOT TARGET EnTT::EnTT)
+    add_library(EnTT::EnTT ALIAS EnTT)
+endif()
+
+if(NOT TARGET EnTT::EnTT AND NOT TARGET EnTT)
+    message(FATAL_ERROR "OpenTS requires EnTT as a third-party dependency.")
+endif()
+
+#
+# ---------------------------------------------------------
 # bgfx (rendering backend)
 # ---------------------------------------------------------
 #
