@@ -24,6 +24,8 @@
 #include "mzone.hh"
 #include "zone.hh"
 
+#include <vector>
+
 class CellClass;
 class FootClass;
 class TechnoClass;
@@ -139,8 +141,16 @@ class AStarClass
 			/*
 			 * These are all the open set entries one path attempt may use, handed out in
 			 * order as the search reaches new cells.
+			 *
+			 * BUGFIX: was Nodes[65536], the original vanilla size. Phobos's equivalent pool
+			 * carries an explicit changelog comment recording that 65536 proved too small
+			 * and was doubled ("[65536] => [131072]"). With max_loops == -1 the regular
+			 * search allows up to ~65527 expansions, each able to spawn several child nodes,
+			 * so 65536 is exhausted well before the search queue empties on large/open maps.
+			 * Matched here to Phobos's own fix; see Create_Node's bounds check in astar.cpp
+			 * for the guard that now makes exhaustion fail safely instead of overflowing.
 			 */
-			RegularOpenNode Nodes[65536];
+			RegularOpenNode Nodes[131072];
 
 			/*
 			 * This is the number of entries handed out so far, and so the index the next
@@ -175,6 +185,13 @@ class AStarClass
 		bool Subzone_Edge_Banned(unsigned short subzone1, unsigned short subzone2, int subzone_level);
 		void Ban_Subzone_Edge(unsigned int subzone1, unsigned int subzone2, int subzone_level);
 		void Ban_Neighborhood_Subzone_Edges(unsigned int subzone, int subzone_level);
+
+		/* ----------------------------------------------------------------------------------
+		 * EXTENSION: rectilinear line-of-sight subzone shortcut, ported from Phobos's
+		 * AStarClass. See Find_Rectilinear_Path's definition in astar.cpp for the full
+		 * explanation; this is not vanilla behavior.
+		 */
+		bool Find_Rectilinear_Path(int subzone_level, MZoneType mzone);
 
 	private:
 		/* -----------------------------------------------------------------------------------
@@ -355,6 +372,40 @@ class AStarClass
 		 * Number of valid entries in each hierarchical subzone path
 		 */
 		int HierSubzonePathCount[SUBZONE_COUNT];
+
+		/* -----------------------------------------------------------------------------------
+		 * EXTENSION: rectilinear line-of-sight subzone shortcut state, ported from Phobos's
+		 * AStarClass (LineCells / StraightSubzones / IsStraightFlag). Not vanilla behavior.
+		 */
+
+		/*
+		 * If true, Find_Path_Hierarchical attempts a straight-line-of-sight shortcut at each
+		 * level before falling back to the full subzone search. Compile-time toggle, matching
+		 * Phobos's EnableRectilinear.
+		 */
+		static constexpr bool EnableRectilinear = true;
+
+		/*
+		 * The Bresenham run of cells between the current search's start and end, built once
+		 * per Find_Path_Hierarchical call and consumed by Find_Rectilinear_Path at every
+		 * level. Static/shared like the rest of the search's scratch state, since only one
+		 * hierarchical search runs at a time.
+		 */
+		static std::vector<Cell> LineCells;
+
+		/*
+		 * Scratch buffer for Find_Rectilinear_Path: the deduplicated chain of subzone IDs
+		 * LineCells crosses at one level, rebuilt fresh on every call.
+		 */
+		static std::vector<unsigned short> StraightSubzones[SUBZONE_COUNT];
+
+		/*
+		 * Per-level stamps marking which subzones were still reachable along a straight-line
+		 * run that broke before reaching the destination. Consulted by Find_Path_Hierarchical
+		 * to discount costs into those subzones during the full search fallback. Stamped with
+		 * UniqueID like the other Hier* tables and cleared alongside them in Clear().
+		 */
+		static std::vector<int> IsStraightFlag[SUBZONE_COUNT];
 };
 
 /* -----------------------------------------------------------------------------------

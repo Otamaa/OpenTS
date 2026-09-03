@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 
 /*
@@ -65,6 +66,12 @@ static unsigned int CellHeights[2000];
 unsigned int MapCellStride;
 
 int AStarFacingToOffset[FACING_COUNT];
+
+// EXTENSION: rectilinear line-of-sight subzone shortcut (ported from Phobos AStarClass).
+// See Find_Rectilinear_Path() below for details.
+std::vector<Cell> AStarClass::LineCells;
+std::vector<unsigned short> AStarClass::StraightSubzones[SUBZONE_COUNT];
+std::vector<int> AStarClass::IsStraightFlag[SUBZONE_COUNT];
 
 
 /// <summary>
@@ -231,11 +238,14 @@ double AStarClass::Get_Movement_Cost(CellClass **from, CellClass **to, bool brid
 		int cell2_offset;
 
 		if (to_cell->IsBridgeEastWest) {
-			cell2_offset = _bridge_cell_offset2[(dir - FACING_S) % FACING_COUNT];
+			// Cosmetic: was "% FACING_COUNT". Only behaves like a mask because dir is
+			// unsigned (unsigned mod-by-power-of-2 == bitmask); making the intent explicit
+			// so this doesn't silently become an OOB read if dir's type ever changes.
+			cell2_offset = _bridge_cell_offset2[(dir - FACING_S) & (FACING_COUNT - 1)];
 			cell1 = to[_bridge_cell_offset2[dir]];
 			cell2 = to[cell2_offset];
 		} else {
-			cell2_offset = _bridge_cell_offset1[(dir - FACING_S) % FACING_COUNT];
+			cell2_offset = _bridge_cell_offset1[(dir - FACING_S) & (FACING_COUNT - 1)];
 			cell1 = to[_bridge_cell_offset1[dir]];
 			cell2 = to[cell2_offset];
 		}
@@ -313,6 +323,13 @@ PathStruct * AStarClass::Find_Path_Regular(Cell const & from, Cell const & to, F
 	HierLastNodeCell = from;
 	int * fine_final_ids = HierOnPath[0];
 	RegularOpenNode * working_node = Create_Node(0, from_pptr, to, 0.0);
+
+	// BUGFIX: Create_Node can now return NULL if the node pools are already exhausted
+	// (should not happen at the very start of a search under normal pool sizes, but fail
+	// safely here rather than dereferencing NULL further down).
+	if (working_node == NULL) {
+		return(NULL);
+	}
 
 	if (from == to && CurrentCellHeight == DestCellHeight) {
 		return(NULL);
@@ -409,12 +426,20 @@ PathStruct * AStarClass::Find_Path_Regular(Cell const & from, Cell const & to, F
 
 			bool base_level = !neighbor_cell->IsUnderBridge || abs(CurrentCellHeight - neighbor_cell->Height) <= 1;
 
-			int zone_index = Map.Get_Cell_Zone_Index(neighbor_id);
-			CellSubzoneStruct * subzones = Map.CellSubzones;
+			// OPTIMIZATION: this corridor lookup is only meaningful when with_hs is true
+			// (its result was unconditionally discarded otherwise), but it used to run
+			// unconditionally for every neighbor of every expansion. Gating it on with_hs
+			// removes a zone-index + subzone-table lookup from the hottest loop in this
+			// file for trains, off-map-allowed units, and any HS-disabled retry.
+			short subzone_id = 0;
+			if (with_hs) {
+				int zone_index = Map.Get_Cell_Zone_Index(neighbor_id);
+				CellSubzoneStruct * subzones = Map.CellSubzones;
 
-			short subzone_id = subzones[zone_index].SubzoneID[SUBZONE_FINE];
-			if (fine_final_ids[subzone_id] != UniqueID && base_level && !neighbor_cell->AdjacentObjectCount && with_hs) {
-				continue;
+				subzone_id = subzones[zone_index].SubzoneID[SUBZONE_FINE];
+				if (fine_final_ids[subzone_id] != UniqueID && base_level && !neighbor_cell->AdjacentObjectCount) {
+					continue;
+				}
 			}
 
 			if (base_level && Is_Visited(0, true, node_index) && (working_node->MovementCost + 1.009) > RegularMovementCosts[node_index]) {
@@ -446,6 +471,12 @@ PathStruct * AStarClass::Find_Path_Regular(Cell const & from, Cell const & to, F
 				}
 
 				RegularOpenNode * new_node = Create_Node(working_node, working_to, to, movement_cost);
+				if (new_node == NULL) {
+					// BUGFIX: node pool exhausted; skip this neighbor rather than
+					// dereferencing NULL below. The search continues with whatever
+					// candidate nodes it already has queued.
+					continue;
+				}
 				if (temp_node == NULL) {
 					temp_node = new_node;
 				} else {
@@ -464,7 +495,7 @@ PathStruct * AStarClass::Find_Path_Regular(Cell const & from, Cell const & to, F
 					RegularBridgeVisited[node_index] = UniqueID;
 					RegularBridgeMovementCosts[node_index] = new_node->MovementCost;
 				}
-				if (subzone_id == HierSubzonePath[SUBZONE_FINE][HierNodeIndex + 1]) {
+				if (with_hs && subzone_id == HierSubzonePath[SUBZONE_FINE][HierNodeIndex + 1]) {
 					HierNodeIndex++;
 					HierLastNodeCell = neighbor_cell->CellID;
 				}
@@ -525,6 +556,16 @@ breakout:
 /// <returns>Returns with a pointer to the new node, taken from the search's node pool.</returns>
 AStarClass::RegularOpenNode * AStarClass::Create_Node(RegularOpenNode * parent, CellClass ** cell, Cell const & to, float movement_cost)
 {
+	// BUGFIX: neither pool was bounds-checked before this. On a large/open map with
+	// max_loops == -1 (unrestricted) the regular search can exhaust either fixed-size pool
+	// well before its queue empties, which previously wrote past the end of
+	// RegularOpenNodes->Nodes / RegularNodes->Nodes and corrupted adjacent heap memory.
+	// Callers must treat a NULL return as "pool exhausted, stop creating nodes this search".
+	if (RegularOpenNodes->ActiveCount >= ARRAY_SIZE(RegularOpenNodes->Nodes)
+	 || RegularNodes->ActiveCount >= ARRAY_SIZE(RegularNodes->Nodes)) {
+		return(NULL);
+	}
+
 	RegularOpenNode * open_node = &RegularOpenNodes->Nodes[RegularOpenNodes->ActiveCount++];
 	RegularNode * node_data = &RegularNodes->Nodes[RegularNodes->ActiveCount++];
 	node_data->CellSlot = cell;
@@ -598,6 +639,14 @@ void AStarClass::Clear(void)
 				working_ids[j] = 0;
 				costs[j] = 0;
 			}
+		}
+
+		// EXTENSION: reset the rectilinear shortcut's straight-flag stamps alongside the
+		// other per-subzone stamp tables whenever the search identifier wraps. These flags
+		// are stamped with UniqueID the same way HierOnPath/HierOpened are, so they go stale
+		// the same way and must be cleared for real at the same point.
+		for (i = 0; i < ARRAY_SIZE(IsStraightFlag); i++) {
+			std::fill(IsStraightFlag[i].begin(), IsStraightFlag[i].end(), 0);
 		}
 
 		UniqueID++;
@@ -1577,7 +1626,111 @@ void AStarClass::Reset(void)
 		for (j = Map.SubzoneTrackingEntryCount[i] - 1; j >= 0; j--) {
 			costs[j] = 0;
 		}
+
+		// EXTENSION: size the straight-flag table for this level to match the subzone
+		// count, same lifetime rules as HierOnPath/HierOpened/HierCosts above. Left empty
+		// (not resized to `count` with a fill) on purpose: Find_Rectilinear_Path grows it
+		// lazily only when a broken run actually needs to stamp flags, which is the common
+		// case where the shortcut isn't even attempted.
+		IsStraightFlag[i].clear();
 	}
+}
+
+
+/// <summary>
+/// Attempts to shortcut one level of the hierarchical search using a straight
+/// line-of-sight test between the start and end cells.
+/// EXTENSION: ported from Phobos's AStarClass::FindRectilinearPath. The Bresenham run built
+/// in Find_Path_Hierarchical (AStarClass::LineCells) is collapsed into the unique chain of
+/// subzones it crosses at this level. If every consecutive pair in that chain is directly
+/// connected and passable, the chain *is* the corridor for this level and the full
+/// Dijkstra-style subzone search below can be skipped outright. If the chain breaks
+/// partway, the subzones that were still connected are stamped in IsStraightFlag so the
+/// full search can bias its costs toward them (see the RECTILINEAR_DISCOUNT use in
+/// Find_Path_Hierarchical).
+/// </summary>
+/// <param name="subzone_level">The hierarchy level to test (SUBZONE_FINE..SUBZONE_COARSE).</param>
+/// <param name="mzone">The movement zone passability is tested against.</param>
+/// <returns>bool; Was the entire straight-line run connected and passable at this level?</returns>
+bool AStarClass::Find_Rectilinear_Path(int subzone_level, MZoneType mzone)
+{
+	std::vector<unsigned short> & straight_subzones = StraightSubzones[subzone_level];
+	std::vector<int> & straight_flags = IsStraightFlag[subzone_level];
+	straight_subzones.clear();
+
+	{
+		int last_id = -1;
+		for (Cell const & c : LineCells) {
+			int zone_index = Map.Get_Cell_Zone_Index(c);
+			int subzone_id = Map.CellSubzones[zone_index].SubzoneID[subzone_level];
+			if (subzone_id != last_id) {
+				straight_subzones.push_back((unsigned short)subzone_id);
+				last_id = subzone_id;
+			}
+		}
+	}
+
+	if (straight_subzones.empty()) {
+		return(false);
+	}
+
+	auto are_connected = [subzone_level, mzone](unsigned int from_id, unsigned int to_id) -> bool
+	{
+		if (from_id == to_id) {
+			return(true);
+		}
+
+		DynamicVectorClass<SubzoneConnectionStruct> & connections = Map.SubzoneTracking[subzone_level][from_id].Connections;
+		int count = connections.Count();
+
+		for (int i = 0; i < count; i++) {
+			// VERIFY: Phobos's reverse-engineered AreConnected matched on a field it names
+			// "ConnectionPenaltyFlag" here (elsewhere a bool cross-block/diagonal flag),
+			// which cannot be right for an index comparison against toIdx - almost certainly
+			// an IDA pseudocode field mis-naming from the struct's raw offsets, the exact
+			// footgun called out in "SP errors in IDA pseudocode" above. Matching on SubzoneID
+			// instead, consistent with every other use of SubzoneConnectionStruct in this file
+			// (see the neighbor expansion loop below). Confirm against the IDB before relying
+			// on this for anything beyond the shortcut this function implements.
+			if (connections[i].SubzoneID == to_id) {
+				PassabilityType passability = Map.SubzoneTracking[subzone_level][to_id].Passability;
+				int * pass_table = (int *)MZonePassability[mzone];
+				return(pass_table[passability] == TRAVERSAL_PASSABLE);
+			}
+		}
+
+		return(false);
+	};
+
+	size_t straight_count = straight_subzones.size();
+	for (size_t i = 0; i + 1 < straight_count; i++) {
+		if (!are_connected(straight_subzones[i], straight_subzones[i + 1])) {
+			size_t subzone_count = (size_t)Map.SubzoneTrackingEntryCount[subzone_level];
+
+			if (straight_flags.size() < subzone_count) {
+				straight_flags.resize(subzone_count, 0);
+			}
+
+			for (unsigned short id : straight_subzones) {
+				straight_flags[id] = UniqueID;
+			}
+
+			return(false);
+		}
+	}
+
+	HierSubzonePathCount[subzone_level] = (int)straight_count;
+
+	for (size_t i = 0; i < straight_count; i++) {
+		HierSubzonePath[subzone_level][i] = straight_subzones[i];
+	}
+
+	int * final_ids = HierOnPath[subzone_level];
+	for (unsigned short id : straight_subzones) {
+		final_ids[id] = UniqueID;
+	}
+
+	return(true);
 }
 
 
@@ -1587,6 +1740,8 @@ void AStarClass::Reset(void)
 /// every level confined to the corridor the coarser one came up with. The corridor that
 /// falls out of it is what Find_Path_Regular is then restricted to, and that is what keeps
 /// long paths affordable.
+/// EXTENSION: before running the full search at a given level, a straight-line-of-sight
+/// shortcut is attempted first (see Find_Rectilinear_Path). Ported from Phobos.
 /// </summary>
 /// <param name="mzone">The movement zone that decides which subzones count as passable.</param>
 /// <param name="foot">The object being pathed for, consulted for threat avoidance. May be
@@ -1596,11 +1751,50 @@ bool AStarClass::Find_Path_Hierarchical(Cell const & from, Cell const & to, MZon
 {
 	int *pass_table = (int *)MZonePassability[mzone];
 
-	double threat_avoidance = foot != NULL ? foot->Threat_Avoidance_Value() : threat_avoidance = 0.0;
+	double threat_avoidance = (foot != NULL) ? foot->Threat_Avoidance_Value() : 0.0;
 
 	HouseClass * house = foot != NULL ? foot->House : NULL;
 
 	bool avoid_threats = threat_avoidance > 0.00001;
+
+	// EXTENSION: build the straight-line cell run between start and end once, up front, so
+	// every level's Find_Rectilinear_Path call below can reuse it instead of re-walking a
+	// Bresenham line per level. Ported from Phobos's AStarClass::FindHierarchicalPath.
+	if (EnableRectilinear) {
+		LineCells.clear();
+
+		int x0 = from.X;
+		int y0 = from.Y;
+		int x1 = to.X;
+		int y1 = to.Y;
+		int dx = abs(x1 - x0);
+		int sx = (x0 < x1) ? 1 : -1;
+		int dy = abs(y1 - y0);
+		int sy = (y0 < y1) ? 1 : -1;
+		int err = dx - dy;
+		int x = x0;
+		int y = y0;
+
+		while (true) {
+			LineCells.emplace_back(x, y);
+
+			if (x == x1 && y == y1) {
+				break;
+			}
+
+			int e2 = 2 * err;
+
+			if (e2 > -dy) {
+				err -= dy;
+				x += sx;
+			}
+
+			if (e2 < dx) {
+				err += dx;
+				y += sy;
+			}
+		}
+	}
 
 	for (int subzone_level = SUBZONE_COARSE; subzone_level >= SUBZONE_FINE; subzone_level--) {
 		HierQueue->Clear();
@@ -1609,6 +1803,13 @@ bool AStarClass::Find_Path_Hierarchical(Cell const & from, Cell const & to, MZon
 		int start_subzone = start_cell_subzones.SubzoneID[subzone_level];
 		CellSubzoneStruct & end_cell_subzones = Map.CellSubzones[Map.Get_Cell_Zone_Index(to)];
 		int end_subzone = end_cell_subzones.SubzoneID[subzone_level];
+
+		// EXTENSION: try the straight-line-of-sight shortcut first. If it succeeds, this
+		// level's corridor is already fully populated (HierOnPath/HierSubzonePath) and the
+		// Dijkstra-style search below can be skipped entirely for this level.
+		if (EnableRectilinear && Find_Rectilinear_Path(subzone_level, mzone)) {
+			continue;
+		}
 
 		bool is_coarse = subzone_level == SUBZONE_COARSE;
 		int * coarser_final_ids;
@@ -1673,8 +1874,30 @@ bool AStarClass::Find_Path_Hierarchical(Cell const & from, Cell const & to, MZon
 					static const float _passability_scores[PASSABLE_COUNT] = {1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0};
 					float score = _passability_scores[passability] + best_node->Score + (double)threat + extra_score;
 
+					// EXTENSION: bias the search toward subzones the straight-line shortcut
+					// could still reach at this level, even though the full chain broke
+					// somewhere else. Ported from Phobos (RECTILINEAR_DISCOUNT).
+					if (EnableRectilinear) {
+						constexpr float RECTILINEAR_DISCOUNT = 0.1f;
+						std::vector<int> & straight_flags = IsStraightFlag[subzone_level];
+						if (to_subzone < (int)straight_flags.size() && straight_flags[to_subzone] == UniqueID) {
+							score *= RECTILINEAR_DISCOUNT;
+						}
+					}
+
 					if ((working_ids[to_subzone] != UniqueID || costs[to_subzone] > score) && (is_coarse || coarser_final_ids[to_coarser_subzone] == UniqueID || passability == PASSABLE_CRUSH) && pass_table[passability] == TRAVERSAL_PASSABLE) {
 						if (no_banned_edges || !Subzone_Edge_Banned(from_subzone, to_subzone, subzone_level)) {
+							// BUGFIX: HierNodePool is fixed at 10000 entries (matches
+							// Phobos's own pool size), but unlike Phobos's CreatePathNode
+							// ("if (bufferIndex >= 10000) return false;"), nothing here
+							// checked node_count against it before writing. A dense enough
+							// subzone graph could silently write past the pool. Ported
+							// Phobos's guard, aborting this level's hierarchical search so
+							// the caller falls back to an unrestricted regular search.
+							if (node_count >= 10000) {
+								return(false);
+							}
+
 							AStarHierarchicalNode * new_node = &HierNodePool[node_count];
 							new_node->ParentIndex = best_node - HierNodePool;
 							new_node->SubzoneID = to_subzone;
