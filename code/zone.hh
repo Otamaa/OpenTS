@@ -178,7 +178,14 @@ struct CellSubzoneStruct
 	 * This is the subzone the cell belongs to at each level of pathfinding coarseness
 	 * (SubzoneLevelType), or 0 where the cell has none at that level.
 	 */
-	signed short SubzoneID[SUBZONE_COUNT];
+	// Was `signed short` -- large maps can produce tens of thousands of
+	// FINE-level subzones (2x2 blocks), well past SHRT_MAX (32767). Storing
+	// a truncated id here caused a sign mismatch in MapClass::Subzone_Span's
+	// "is this already my own subzone" check, which never matched once the id
+	// wrapped negative -- the flood fill kept re-entering cells it had already
+	// filled instead of recognizing them as done, producing runaway recursion
+	// and a stack overflow. See CHANGELOG for the report this traces back to.
+	int SubzoneID[SUBZONE_COUNT];
 
 	/*
 	 * This is the base terrain zone of the cell, cached from CellZones on each rebuild. A
@@ -254,7 +261,7 @@ struct SubzoneTrackingStruct
 	 * expand a subzone whose parent lay on the route the coarser level settled on, which is
 	 * what keeps a long path cheap to find.
 	 */
-	unsigned short ParentSubzoneID;
+	int ParentSubzoneID;
 
 	/*
 	 * This is the passability shared by all of this subzone's cells -- a subzone never spans

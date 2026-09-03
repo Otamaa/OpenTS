@@ -5049,14 +5049,20 @@ void MapGeneratorClass::Init_Map(bool full_init)
 	 * The _max tables were capped at 175 back when MAP_CELL_W/H were fixed at
 	 * 512, leaving most of even the old map size unreachable through the
 	 * generator. Raised here to make the new ceiling (sun.h) actually
-	 * reachable -- but deliberately conservative (well under MAP_CELL_W/H on
-	 * either build) rather than maximal, since the region-growing algorithms
-	 * below this point haven't been performance-tested at the new hard cap.
+	 * reachable -- but conservative for a second reason too, not just
+	 * "generator untested at extremes": MapClass::Set_Map_Dimensions (map.cpp)
+	 * needs rect.Width+rect.Height to stay under roughly MAP_CELL_H/2, since
+	 * its isometric cell-creation loop strides Array with MAP_CELL_H as the
+	 * row pitch. That function now clamps and logs rather than crashing if
+	 * this table is ever pushed past that bound again, but the table itself
+	 * is kept safely under it (max entry well under MAP_CELL_H/4 on the
+	 * smaller 32-bit cap) so the clamp is a last-resort safety net, not
+	 * something ordinary 8-player/max-size generation relies on.
 	 */
 	static const int _width_min[] = {50, 65, 75, 85, 100, 120, 135};
-	static const int _width_max[] = {150, 200, 260, 340, 450, 550, 650};
+	static const int _width_max[] = {110, 150, 190, 250, 330, 400, 480};
 	static const int _height_min[] = {50, 65, 75, 85, 100, 120, 135};
-	static const int _height_max[] = {150, 200, 260, 340, 450, 550, 650};
+	static const int _height_max[] = {110, 150, 190, 250, 330, 400, 480};
 
 	int size_index = SeedData.NumPlayers - 2;
 	float width_frac = SeedData.Width * (1.0f / 3.0f);

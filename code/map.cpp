@@ -712,8 +712,36 @@ void MapClass::Init_Cells(void)
  * HISTORY:                                                                                    *
  *   05/14/1994 JLB : Created.                                                                 *
  *=============================================================================================*/
-void MapClass::Set_Map_Dimensions(Rect const & rect, bool reset_cells, int cell_height, bool refresh_map)
+void MapClass::Set_Map_Dimensions(Rect const & rect_in, bool reset_cells, int cell_height, bool refresh_map)
 {
+	/*
+	 * The isometric cell-creation loop further down strides through Array
+	 * using MAP_CELL_H as its row pitch while walking up to roughly
+	 * 2*(rect.Width+rect.Height) rows (MapRect.Height is the isometric
+	 * diagonal, rect.Width+rect.Height-1) -- so rect.Width+rect.Height has
+	 * to stay well under MAP_CELL_H/2 or that loop's "idx" walks past the
+	 * end of Array. Confirmed report: "idx = 4194304, Array size = 4194304"
+	 * at NumPlayers=8, max RMG size, 32-bit build (MAP_CELL_H=2048). Clamp
+	 * here rather than crash -- this is reachable both from RMG (mapgen.cpp,
+	 * large size + high player count) and from a hand-authored map's
+	 * [Map] Size= INI entry (DisplayClass::Read_INI, display.cpp), so the
+	 * guard belongs at the one function both funnel through, not just at
+	 * the RMG call site.
+	 */
+	Rect rect = rect_in;
+	{
+		int const safe_sum = (MAP_CELL_H / 2) - 8; // small margin below the exact bound derived above
+		if (rect.Width + rect.Height > safe_sum) {
+			double scale = (double)safe_sum / (double)(rect.Width + rect.Height);
+			int const orig_w = rect.Width;
+			int const orig_h = rect.Height;
+			rect.Width = (int)(rect.Width * scale);
+			rect.Height = (int)(rect.Height * scale);
+			DebugString("[MapClass::Set_Map_Dimensions] Requested size %dx%d exceeds the safe isometric bound (W+H <= %d) -- clamped to %dx%d.\n",
+				orig_w, orig_h, safe_sum, rect.Width, rect.Height);
+		}
+	}
+
 	int i = 0;
 
 	int w = PlayRect.Width;
@@ -2852,7 +2880,7 @@ int MapClass::Zone_Reset(void)
 			LastAdjacentZone = 0;
 			int span = Zone_Span(czone, zone, skip);
 			if (span > bestspan) {
-				bestzone = (unsigned short)zone;
+				bestzone = zone;
 				bestspan = span;
 			}
 			vec.Add(pass);
@@ -2863,7 +2891,7 @@ int MapClass::Zone_Reset(void)
 		}
 	}
 
-	ZoneCount = (unsigned short)zone;
+	ZoneCount = zone;
 
 	for (i = ZoneConnections.Count() - 1; i >= 0; i--) {
 		ZoneConnectionClass * connection = &ZoneConnections[i];
@@ -10099,7 +10127,7 @@ void MapClass::Reset_Subzone(int subzone)
 
 			track->Add(SubzoneTrackingStruct());
 
-			SubzoneTrackingStruct * added = &(*track)[(unsigned short)entry_count];
+			SubzoneTrackingStruct * added = &(*track)[entry_count]; // was truncated to (unsigned short) for no structural reason -- (*track) is int-indexed
 			added->ParentSubzoneID = (unsigned short)parent;
 			added->Passability = (PassabilityType)passability;
 			added->Connections.Set_Growth_Step(16);
@@ -10123,7 +10151,7 @@ void MapClass::Reset_Subzone(int subzone)
 		}
 	}
 
-	SubzoneTrackingEntryCount[subzone] = (unsigned short)entry_count;
+	SubzoneTrackingEntryCount[subzone] = entry_count; // was truncated to (unsigned short) for no structural reason -- the field is int[]
 
 	/*
 	 * Re-register the zone-to-zone connections for this subzone level.
@@ -10206,7 +10234,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 		if (abs(begin->Height - prev_height) >= 2) {
 			break;
 		}
-		begin->SubzoneID[subzone_level] = (short)subzone_id;
+		begin->SubzoneID[subzone_level] = subzone_id; // was (short)-truncated -- see zone.hh
 		prev_height = begin->Height;
 		int prev_zone = begin[-1].ZoneID;
 		begin--;
@@ -10245,7 +10273,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 		if (abs(end->Height - prev_height) >= 2) {
 			break;
 		}
-		end->SubzoneID[subzone_level] = (short)subzone_id;
+		end->SubzoneID[subzone_level] = subzone_id; // was (short)-truncated -- see zone.hh
 		prev_height = end->Height;
 		end++;
 		end_x++;
@@ -10307,7 +10335,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 		}
 
 		if (shadow_subzone != 0 || y <= ymin || x < xmin || x > xmax) {
-			if (shadow_subzone != (unsigned short)subzone_id && shadow_subzone != last_adjacent) {
+			if (shadow_subzone != subzone_id && shadow_subzone != last_adjacent) { // was truncated to (unsigned short) -- see zone.hh
 				if (shadow_subzone != 0) {
 					if (abs(span_ptr->Height - above->Height) < 2 && In_Local_Radar(span_cell, true)) {
 						Cell shadow_cell;
@@ -10376,7 +10404,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 		}
 
 		if (shadow_subzone != 0 || y >= ymax || x < xmin || x > xmax) {
-			if (shadow_subzone != (unsigned short)subzone_id && shadow_subzone != last_adjacent) {
+			if (shadow_subzone != subzone_id && shadow_subzone != last_adjacent) { // was truncated to (unsigned short) -- see zone.hh
 				if (shadow_subzone != 0) {
 					if (abs(below->Height - span_ptr->Height) < 2 && In_Local_Radar(span_cell, true)) {
 						Cell shadow_cell;
@@ -11014,7 +11042,7 @@ void MapClass::Update_Cell_Subzones(Cell const & cell)
 							if (subzone != 2) {
 								parent = subptr->SubzoneID[subzone + 1];
 							}
-							added->ParentSubzoneID = (unsigned short)parent;
+							added->ParentSubzoneID = parent;
 							added->Passability = (PassabilityType)passability;
 							added->Connections.Set_Growth_Step(16);
 							added->ThreatRegion = (short)x / REGION_WIDTH + MAP_REGION_WIDTH * ((short)y / REGION_HEIGHT) + (MAP_REGION_WIDTH + 1);
