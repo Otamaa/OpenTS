@@ -84,6 +84,7 @@
 #include "anim.h"
 #include "building.h"
 #include "cell.h"
+#include "coord.h"
 #include "crc.h"
 #include "foot.h"
 #include "globals.h"
@@ -2386,9 +2387,10 @@ void TeamClass::TMission_GOTO_SHROUD(TeamMissionClass * mission, bool first_time
 void TeamClass::TMission_MOVECELL(TeamMissionClass * mission, bool first_time)
 {
 	if (first_time) {
-		Cell cell;
-		cell.X = mission->Data.Value % 1000;
-		cell.Y = mission->Data.Value / 1000;
+		// Fill_In() (tmission.cpp) normalizes Data.Value up to the current
+		// base-10000 pack regardless of which NewINIFormat the file was saved
+		// in, so decoding here never needs a version check.
+		Cell cell = CellPack::From_Decimal10000(mission->Data.Value);
 		if (Map.In_Radar(cell)) {
 		Assign_Mission_Target(&Map[cell]);
 	}

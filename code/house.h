@@ -32,6 +32,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "_house.h"
 #include "base.h"
 #include "coord.h"
@@ -1062,8 +1064,14 @@ class HouseClass : public AbstractClass
 		/*
 		**	This vector holds the recorded status of the map regions. It is through
 		**	this region information that team paths are calculated.
+		**
+		**	Heap-allocated (rather than a fixed RegionClass[MAP_TOTAL_REGIONS] member)
+		**	so that HouseClass's own footprint doesn't scale with MAP_TOTAL_REGIONS at
+		**	compile time -- that matters now that MAP_TOTAL_REGIONS can be tens of
+		**	thousands of entries on larger maps. Always sized to MAP_TOTAL_REGIONS in
+		**	the constructor; indexing (Regions[i]) is unchanged from the array version.
 		*/
-		RegionClass Regions[MAP_TOTAL_REGIONS];
+		std::vector<RegionClass> Regions;
 
 	/*
 	**	These values are for multiplay only.

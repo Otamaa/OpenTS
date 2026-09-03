@@ -177,8 +177,15 @@ void TeamMissionClass::Fill_In(char const * entry)
 
 		sscanf(entry, "%d,%d", &tmission, &value);
 
-		if (tmission == TMISSION_MOVECELL && NewINIFormat < 4) {
-			value = (value % 128) + ((value / 128) * 1000);
+		if (tmission == TMISSION_MOVECELL) {
+			if (NewINIFormat < 4) {
+				// Legacy 128-wide pack -> current 10000-wide pack.
+				value = (value % 128) + ((value / 128) * 10000);
+			} else if (NewINIFormat < 5) {
+				// Old 1000-wide pack -> current 10000-wide pack. See
+				// CellPack in coord.h for why the base changed.
+				value = (value % 1000) + ((value / 1000) * 10000);
+			}
 		}
 
 		Mission = tmission;

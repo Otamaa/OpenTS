@@ -65,6 +65,7 @@
 #include "anim.h"
 #include "ccrand.h"
 #include "cell.h"
+#include "coord.h"
 #include "combat.h"
 #include "draw.h"
 #include "findmake.h"
@@ -778,14 +779,7 @@ void TerrainClass::Read_INI(CCINIClass const & ini)
 		char const * entry = ini.Get_Entry(INI_NAME, index);
 		TerrainTypeClass const * terrain = TGet_Class<TerrainTypeClass>(ini, INI_NAME, entry, NULL);
 
-		Cell cell;
-		if (NewINIFormat >= 4) {
-			int val = atoi(entry);
-			cell = Cell(val % 1000, val / 1000);
-		} else {
-			int val = atoi(entry);
-			cell = Cell(val % 128, val / 128);
-		}
+		Cell cell = CellPack::From_INI(atoi(entry), NewINIFormat);
 
 		if (terrain != NULL) {
 			tptr = new TerrainClass(terrain, cell);
@@ -826,7 +820,7 @@ void TerrainClass::Write_INI(CCINIClass & ini)
 		if (terrain != NULL && !terrain->IsInLimbo && terrain->IsActive) {
 			char	uname[10];
 			Cell cell = terrain->Get_Cell();
-			sprintf(uname, "%d", cell.X + cell.Y * 1000);
+			sprintf(uname, "%d", CellPack::To_INI(cell));
 			TPut_Class<TerrainTypeClass>(ini, INI_NAME, uname, terrain->Class);
 		}
 	}

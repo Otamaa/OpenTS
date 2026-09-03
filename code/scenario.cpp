@@ -86,6 +86,7 @@
 #include "ccrand.h"
 #include "cctooltip.h"
 #include "cell.h"
+#include "coord.h"
 #include "conquer.h"
 #include "convert.h"
 #include "crc.h"
@@ -3665,7 +3666,7 @@ bool ScenarioClass::Write_INI(CCINIClass & ini, bool mplayer) const
 	ini.Put_String(BASIC, "NextScenario", NextScenarioName);
 	ini.Put_String(BASIC, "AltNextScenario", AltNextScenarioName);
 	ini.Put_String(BASIC, "Name", Description);
-	ini.Put_Int(BASIC, "NewINIFormat", 4);
+	ini.Put_Int(BASIC, "NewINIFormat", 5);
 	ini.Put_Int(BASIC, "CarryOverCap", CarryOverCap / 100);
 	ini.Put_Bool(BASIC, "EndOfGame", IsEndOfGame);
 	ini.Put_Bool(BASIC, "SkipScore", IsSkipScore);
@@ -3931,7 +3932,7 @@ void ScenarioClass::Read_Waypoints(CCINIClass const & ini)
 		if (val == 0) {
 			Waypoint[i] = CELL_NONE;
 		} else {
-			Waypoint[i] = Cell(val % 1000, val / 1000);
+			Waypoint[i] = CellPack::From_INI(val, NewINIFormat);
 		}
 
 		if (Is_Valid_Waypoint(i)) {
@@ -3954,7 +3955,7 @@ void ScenarioClass::Write_Waypoints(CCINIClass & ini) const
 	for (int i = 0; i < WAYPT_COUNT; i++) {
 		if (Waypoint[i] != CELL_NONE) {
 			wsprintf(entry, "%d", i);
-			ini.Put_Int(WAYNAME, entry, Waypoint[i].Y * 1000 + Waypoint[i].X);
+			ini.Put_Int(WAYNAME, entry, CellPack::To_INI(Waypoint[i]));
 		}
 	}
 }

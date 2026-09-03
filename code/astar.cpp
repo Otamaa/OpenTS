@@ -652,8 +652,10 @@ AStarClass::AStarClass(void) :
 	HierNodeIndex(-1),
 	HierLastNodeCell(0,0)
 {
-	RegularQueue = new PriorityQueueClass<RegularOpenNode>(65536);
-	HierQueue = new PriorityQueueClass<AStarHierarchicalNode>(10000);
+	// Capacity matches RegularOpenNodePool::Nodes (astar.h) -- every open-node
+	// handed out from that pool gets pushed here, so the two must track together.
+	RegularQueue = new PriorityQueueClass<RegularOpenNode>(MAP_CELL_TOTAL / 4);
+	HierQueue = new PriorityQueueClass<AStarHierarchicalNode>(10000); // VERIFY: subzone-count heuristic, not cell-count -- left as-is, see changelog
 	RegularOpenNodes = new RegularOpenNodePool;
 	RegularNodes = new RegularNodePool;
 

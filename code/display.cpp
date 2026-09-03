@@ -110,6 +110,7 @@
 #include "bullettype.h"
 #include "cctooltip.h"
 #include "cell.h"
+#include "coord.h"
 #include "conquer.h"
 #include "convert.h"
 #include "data.h"
@@ -3203,11 +3204,7 @@ void DisplayClass::Read_INI(CCINIClass const & ini)
 
 		int val = atoi(cellentry);
 
-		if (NewINIFormat >= 4) {
-			cell = Cell(val % 1000, val / 1000);
-		} else {
-			cell = Cell(val % 128, val / 128);
-		}
+		cell = CellPack::From_INI(val, NewINIFormat);
 
 		if (tp != NULL && !(*this)[cell].Tag) {
 			TagClass * tt = Find_Or_Make(tp);
@@ -3347,7 +3344,7 @@ void DisplayClass::Write_INI(CCINIClass & ini)
 					/*
 					**	Generate entry name.
 					*/
-					wsprintf(entry, "%d", x + (y * 1000));
+					wsprintf(entry, "%d", CellPack::To_INI(Cell(x, y)));
 
 					/*
 					**	Save entry.
@@ -3413,7 +3410,7 @@ int DisplayClass::Stash_Map_State(void * stash, int)
 			(*(int *)data) = i;
 			data += sizeof(i);
 
-			int val = Scen->Get_Waypoint_Cell((WAYPOINT)i).X + Scen->Get_Waypoint_Cell((WAYPOINT)i).Y * 1000;
+			int val = CellPack::To_Target_ID(Scen->Get_Waypoint_Cell((WAYPOINT)i));
 			(*(int *)data) = val;
 			data += sizeof(val);
 
@@ -3506,7 +3503,7 @@ void DisplayClass::Restore_Map_State(void * stash)
 		int val = (*(int *)data);
 		data += sizeof(val);
 
-		Cell cell(val % 1000, val / 1000);
+		Cell cell = CellPack::From_Target_ID(val);
 		Scen->Set_Waypoint(wp, cell);
 		wcount--;
 	}

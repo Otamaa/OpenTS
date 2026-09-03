@@ -63,6 +63,7 @@
 #include "building.h"
 #include "bullet.h"
 #include "cell.h"
+#include "coord.h"
 #include "house.h"
 #include "index.h"
 #include "infantry.h"
@@ -92,7 +93,7 @@ TargetClass::TargetClass(AbstractClass const * ptr)
 		if (cellptr != NULL) {
 			RTTI = RTTI_CELL;
 			Cell cell = cellptr->CellID;
-			ID = (cell.X + (1000 * cell.Y));
+			ID = CellPack::To_Target_ID(cell);
 		} else {
 			RTTI = RTTI_ABSTRACT;
 			ID = ptr->Fetch_ID();
@@ -116,7 +117,7 @@ TargetClass::TargetClass(Cell const & cell)
 		RTTI = RTTI_NONE;
 	} else {
 		RTTI = RTTI_CELL;
-		ID = (cell.X + (1000 * cell.Y));
+		ID = CellPack::To_Target_ID(cell);
 	}
 }
 
@@ -130,7 +131,7 @@ TargetClass::TargetClass(Cell const & cell)
 TargetClass::TargetClass(Coord const & coord)
 {
 	RTTI = RTTI_CELL;
-	ID = ((coord.X / CELL_LEPTON_W) + (1000 * (coord.Y / CELL_LEPTON_H)));
+	ID = CellPack::To_Target_ID(Cell(coord.X / CELL_LEPTON_W, coord.Y / CELL_LEPTON_H));
 }
 
 
@@ -205,7 +206,7 @@ AbstractClass * xTargetClass::As_Abstract(void) const
 	}
 
 	if (RTTI == RTTI_CELL) {
-		Cell cell(ID % 1000, ID / 1000);
+		Cell cell = CellPack::From_Target_ID(ID);
 		return(&Map[cell]);
 	}
 	return(NULL);
@@ -596,7 +597,7 @@ AircraftClass * xTargetClass::As_Aircraft(void) const
 CellClass * xTargetClass::As_Cell(void) const
 {
 	if (RTTI == RTTI_CELL) {
-		Cell cell(ID % 1000, ID / 1000);
+		Cell cell = CellPack::From_Target_ID(ID);
 		return(&Map[cell]);
 	}
 	return(NULL);

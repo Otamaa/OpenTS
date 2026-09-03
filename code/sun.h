@@ -77,8 +77,24 @@
 */
 
 // Size of the map in cells.
-#define	MAP_CELL_W				512
-#define	MAP_CELL_H				512
+//
+// This is capped by CellPack::TARGET_CELL_MAX (coord.h): xTargetClass packs
+// a RTTI_CELL target's X and Y into 12 bits each (24 bits total) alongside
+// RTTI in the top byte of a single int (target.h). 4096 is the largest
+// value either constant may take without widening that packed representation.
+//
+// The 32-bit cap is kept smaller than the 64-bit one purely for
+// address-space and memory-footprint headroom: CellClass storage
+// (MapClass::Array), the A* visited/cost tables (astar.cpp), and every
+// HouseClass's per-house threat region table (house.h) all scale with
+// MAP_CELL_W*MAP_CELL_H.
+#if defined(_WIN64) || defined(__x86_64__) || defined(__aarch64__)
+#define	MAP_CELL_W				4096
+#define	MAP_CELL_H				4096
+#else
+#define	MAP_CELL_W				2048
+#define	MAP_CELL_H				2048
+#endif
 #define	MAP_CELL_TOTAL			(MAP_CELL_W*MAP_CELL_H)
 
 #define	REFRESH_EOL				Cell(32767, 32767)	// This number ends a refresh/occupy offset list.

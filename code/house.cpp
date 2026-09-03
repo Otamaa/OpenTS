@@ -388,7 +388,8 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 
 	Houses.Add(this);
 
-	memset((void *)&Regions[0], 0x00, sizeof(Regions));
+	Regions.assign(MAP_TOTAL_REGIONS, RegionClass());
+	std::memset(Regions.data(), 0x00, Regions.size() * sizeof(RegionClass));
 
 	/*
 	**	Explicit in-place construction of the super weapons is
@@ -402,7 +403,8 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 	memset(UnitsKilled, 0, sizeof(UnitsKilled));
 	memset(BuildingsKilled, 0, sizeof(BuildingsKilled));
 	IniName = Fetch_String(TXT_COMPUTER);	// Default computer name.
-	memset((void *)&Regions[0], 0x00, sizeof(Regions));
+	Regions.assign(MAP_TOTAL_REGIONS, RegionClass());
+	std::memset(Regions.data(), 0x00, Regions.size() * sizeof(RegionClass));
 	//Allies |= (1L << HeapID);
 	Control.Allies |= (1L << HeapID);
 

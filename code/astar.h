@@ -124,8 +124,15 @@ class AStarClass
 			/*
 			 * These are all the search nodes one path attempt may use. They are handed out
 			 * in order and never individually released.
+			 *
+			 * Sized as a fraction of MAP_CELL_TOTAL (was a literal 131072, i.e.
+			 * MAP_CELL_TOTAL/2 back when the map was fixed at 512x512) so the budget
+			 * scales with the compiled-in map size instead of silently starving
+			 * pathfinding on larger maps. This pool is heap-allocated (see
+			 * AStarClass::RegularNodes), so the memory cost of this scaling is real:
+			 * on the 64-bit 4096x4096 cap that's ~8.4M nodes here.
 			 */
-			RegularNode Nodes[131072];
+			RegularNode Nodes[MAP_CELL_TOTAL / 2];
 
 			/*
 			 * This is the number of nodes handed out so far, and so the index the next one
@@ -139,8 +146,11 @@ class AStarClass
 			/*
 			 * These are all the open set entries one path attempt may use, handed out in
 			 * order as the search reaches new cells.
+			 *
+			 * Sized as a fraction of MAP_CELL_TOTAL (was a literal 65536, i.e.
+			 * MAP_CELL_TOTAL/4 at the old 512x512 map size); see RegularNodePool above.
 			 */
-			RegularOpenNode Nodes[65536];
+			RegularOpenNode Nodes[MAP_CELL_TOTAL / 4];
 
 			/*
 			 * This is the number of entries handed out so far, and so the index the next

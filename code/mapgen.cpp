@@ -5045,11 +5045,18 @@ void MapGeneratorClass::Init_Map(bool full_init)
 	/*
 	 * Interpolate the local map dimensions between the minimum and maximum size
 	 * tables (indexed by player count) by the requested Width/Height fraction.
+	 *
+	 * The _max tables were capped at 175 back when MAP_CELL_W/H were fixed at
+	 * 512, leaving most of even the old map size unreachable through the
+	 * generator. Raised here to make the new ceiling (sun.h) actually
+	 * reachable -- but deliberately conservative (well under MAP_CELL_W/H on
+	 * either build) rather than maximal, since the region-growing algorithms
+	 * below this point haven't been performance-tested at the new hard cap.
 	 */
 	static const int _width_min[] = {50, 65, 75, 85, 100, 120, 135};
-	static const int _width_max[] = {100, 115, 128, 140, 160, 170, 175};
+	static const int _width_max[] = {150, 200, 260, 340, 450, 550, 650};
 	static const int _height_min[] = {50, 65, 75, 85, 100, 120, 135};
-	static const int _height_max[] = {100, 115, 128, 140, 160, 170, 175};
+	static const int _height_max[] = {150, 200, 260, 340, 450, 550, 650};
 
 	int size_index = SeedData.NumPlayers - 2;
 	float width_frac = SeedData.Width * (1.0f / 3.0f);
