@@ -210,6 +210,7 @@ struct CellSubzoneStruct
 struct SubzoneConnectionStruct
 {
 	SubzoneConnectionStruct(void) : SubzoneID(0), IsCrossBlock(false) {}
+	SubzoneConnectionStruct(long long subzone_id) : SubzoneID(subzone_id), IsCrossBlock(false) {}
 	SubzoneConnectionStruct(int subzone_id) : SubzoneID(subzone_id), IsCrossBlock(false) {}
 	SubzoneConnectionStruct(SubzoneConnectionStruct const &that) : SubzoneID(that.SubzoneID), IsCrossBlock(that.IsCrossBlock) {}
 
@@ -219,10 +220,15 @@ struct SubzoneConnectionStruct
 	/*
 	 * This is the subzone that the owning subzone connects to. While a connection is still
 	 * staged in the SubzoneConnectionHashTable this holds both IDs packed together instead, as
-	 * (neighbor << 16) | subzone, so that duplicate pairs fall out of the staging set before
-	 * they are unpacked into the two subzones' adjacency lists.
+	 * ((long long)neighbor << 32) | (unsigned)subzone, so that duplicate pairs fall out of the
+	 * staging set before they are unpacked into the two subzones' adjacency lists.
+	 *
+	 * Was `int` packing (neighbor << 16) | subzone -- once a level can have more than 65536
+	 * subzones (routine on large maps), that silently wrapped and mis-registered connections
+	 * onto the wrong subzone entirely, leaving the real owner's Connections list empty. See
+	 * Zone_Pack32 (map.cpp) for the packing side.
 	 */
-	int SubzoneID;
+	long long SubzoneID;
 
 	/*
 	 * If the two subzones lie in different fill blocks, then this flag will be true. The
@@ -261,7 +267,7 @@ struct SubzoneTrackingStruct
 	 * expand a subzone whose parent lay on the route the coarser level settled on, which is
 	 * what keeps a long path cheap to find.
 	 */
-	int ParentSubzoneID;
+	int ParentSubzoneID; // was `unsigned short` -- truncated once a level exceeds 65535 subzones
 
 	/*
 	 * This is the passability shared by all of this subzone's cells -- a subzone never spans
@@ -279,5 +285,9 @@ struct SubzoneTrackingStruct
 	int ThreatRegion;
 };
 
-typedef HashTableClass<unsigned int, unsigned int> ZONE_PAIR_HASH_SET;
-typedef HashTableClass<unsigned int, SubzoneConnectionStruct> SUBZONE_CONNECTION_HASH_SET;
+typedef HashTableClass<unsigned long long, unsigned long long> ZONE_PAIR_HASH_SET; // was <unsigned int, unsigned int>
+// -- HashTableClass<K,V>::Add_Object(ObjectType const&) packs Key/Value together (hashtable.h);
+// 16 bits each capped every zone id at 65535. Widened so the single SubzoneHash function
+// pointer this and SUBZONE_CONNECTION_HASH_SET both pass to their constructors can share one
+// signature again.
+typedef HashTableClass<unsigned long long, SubzoneConnectionStruct> SUBZONE_CONNECTION_HASH_SET; // was <unsigned int, ...> -- see SubzoneConnectionStruct::SubzoneID

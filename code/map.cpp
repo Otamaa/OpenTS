@@ -209,7 +209,7 @@ FacingType BridgeSideFacings[BRIDGE_COUNT] = {
 };
 
 
-int SubzoneHash(unsigned int const & key);
+int SubzoneHash(unsigned long long const & key); // was (unsigned int const&) -- see SUBZONE_CONNECTION_HASH_SET (zone.hh)
 unsigned int Pick_Random_UInt(unsigned int start, unsigned int end);
 double Random_Fraction(void);
 
@@ -2804,9 +2804,12 @@ ObjectClass * MapClass::Close_Object(Coord const & coord) const
 /// form, so that a pair can be added and found as one value.
 /// </summary>
 /// <returns>Returns with the two zone numbers packed into one key.</returns>
-static unsigned Zone_Pack32(int zone1, int zone2)
+// Was `unsigned` returning (zone1<<16)|zone2 -- capped each id at 65535. Widened to pack full
+// 32-bit halves into a 64-bit key; unpacking (map.cpp, the two "packed"/LOWORD/HIWORD sites)
+// must extract the same halves back out. See SubzoneConnectionStruct::SubzoneID (zone.hh).
+static unsigned long long Zone_Pack32(int zone1, int zone2)
 {
-	return(zone2 | (zone1 << 16));
+	return(((unsigned long long)(unsigned)zone1 << 32) | (unsigned long long)(unsigned)zone2);
 }
 
 
@@ -2880,7 +2883,7 @@ int MapClass::Zone_Reset(void)
 			LastAdjacentZone = 0;
 			int span = Zone_Span(czone, zone, skip);
 			if (span > bestspan) {
-				bestzone = zone;
+				bestzone = zone; // was truncated to (unsigned short) for no structural reason -- bestzone is int
 				bestspan = span;
 			}
 			vec.Add(pass);
@@ -2891,7 +2894,7 @@ int MapClass::Zone_Reset(void)
 		}
 	}
 
-	ZoneCount = zone;
+	ZoneCount = zone; // was truncated to (unsigned short) for no structural reason -- ZoneCount is declared int (map.h)
 
 	for (i = ZoneConnections.Count() - 1; i >= 0; i--) {
 		ZoneConnectionClass * connection = &ZoneConnections[i];
@@ -2907,7 +2910,7 @@ int MapClass::Zone_Reset(void)
 		}
 	}
 
-	unsigned short * zone_degree = new unsigned short[ZoneCount];
+	int * zone_degree = new int[ZoneCount]; // was `unsigned short *` -- carries raw zone ids/counts, see ZONE_PAIR_HASH_SET widening
 	for (i = 0; i < ZoneCount; i++) {
 		zone_degree[i] = 0;
 	}
@@ -2918,9 +2921,11 @@ int MapClass::Zone_Reset(void)
 		if (j > 0) {
 			ZONE_PAIR_HASH_SET::ObjectType * obj = &bucket[0];
 			do {
-				unsigned int value = obj->Value;
-				unsigned short zone1 = LOWORD(value);
-				unsigned short zone2 = HIWORD(value);
+				// Was `unsigned int value` + LOWORD/HIWORD (16-bit halves) -- see the widened
+				// Add_Object(ObjectType const&) (hashtable.h) and ZONE_PAIR_HASH_SET (zone.hh).
+				unsigned long long value = obj->Value;
+				unsigned int zone1 = (unsigned int)(value & 0xFFFFFFFFULL);
+				unsigned int zone2 = (unsigned int)(value >> 32);
 				zone_degree[zone1]++;
 				zone_degree[zone2]++;
 				obj++;
@@ -2928,9 +2933,9 @@ int MapClass::Zone_Reset(void)
 		}
 	}
 
-	unsigned short ** zone_neighbors = new unsigned short *[ZoneCount];
+	int ** zone_neighbors = new int *[ZoneCount]; // was `unsigned short **`
 	for (i = 0; i < ZoneCount; i++) {
-		zone_neighbors[i] = new unsigned short[zone_degree[i]];
+		zone_neighbors[i] = new int[zone_degree[i]]; // was `new unsigned short[...]`
 	}
 
 	for (i = 0; i < ZoneCount; i++) {
@@ -2943,9 +2948,11 @@ int MapClass::Zone_Reset(void)
 		if (j > 0) {
 			ZONE_PAIR_HASH_SET::ObjectType * obj = &bucket[0];
 			do {
-				unsigned int value = obj->Value;
-				unsigned short zone1 = LOWORD(value);
-				unsigned short zone2 = HIWORD(value);
+				// Was `unsigned int value` + LOWORD/HIWORD (16-bit halves) -- see the widened
+				// Add_Object(ObjectType const&) (hashtable.h) and ZONE_PAIR_HASH_SET (zone.hh).
+				unsigned long long value = obj->Value;
+				unsigned int zone1 = (unsigned int)(value & 0xFFFFFFFFULL);
+				unsigned int zone2 = (unsigned int)(value >> 32);
 				zone_neighbors[zone1][zone_degree[zone1]] = zone2;
 				zone_neighbors[zone2][zone_degree[zone2]] = zone1;
 				zone_degree[zone1]++;
@@ -2960,7 +2967,7 @@ int MapClass::Zone_Reset(void)
 		zone_passability[i] = vec[i];
 	}
 
-	unsigned short * stack = new unsigned short[ZoneCount];
+	int * stack = new int[ZoneCount]; // was `unsigned short *` -- carries raw zone ids
 
 	for (MZoneType mzone = MZONE_FIRST; mzone < MZONE_COUNT; mzone++) {
 		int next_movement_zone = 2;
@@ -2981,7 +2988,7 @@ int MapClass::Zone_Reset(void)
 				int passable = table[zone_passability[zone_index]];
 				while (stackcount) {
 					int current = stack[--stackcount];
-					unsigned short * neighbors = zone_neighbors[current];
+					int * neighbors = zone_neighbors[current]; // was `unsigned short *`
 					int degree = zone_degree[current];
 					for (k = degree - 1; k >= 0; k--) {
 						int neighbor = neighbors[k];
@@ -3018,9 +3025,13 @@ int MapClass::Zone_Reset(void)
 /// </summary>
 /// <param name="key">The packed pair of zone numbers to hash.</param>
 /// <returns>Returns with the bucket that the pair belongs in.</returns>
-int SubzoneHash(unsigned int const & key)
+int SubzoneHash(unsigned long long const & key)
 {
-	return(key & 0xF | ((key >> 12) & 0xF));
+	// Vestigial for this table -- HashTableClass<K,V>::Get()/Add_Object(o,head) are the only
+	// callers of HashFunction, and subzone connections always go through the explicit-bucket
+	// Add_Object(bucket_index, entry) overload (see Zone_Pack8), so this never actually runs.
+	// Widened to match SUBZONE_CONNECTION_HASH_SET's key type; logic unchanged.
+	return (int)(key & 0xF | ((key >> 12) & 0xF));
 }
 
 
@@ -3070,8 +3081,8 @@ int MapClass::Zone_Span(CellZoneStruct * data, int zone, int & skip)
 	}
 
 	int begin_zone = begin->ZoneID;
-	if (begin_zone != 0 && (abs(begin->Height - cell_height) < 2 || nopass) && begin_zone != LastAdjacentZone && begin_zone != (unsigned short)zone) {
-		ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(begin_zone, (unsigned short)zone));
+	if (begin_zone != 0 && (abs(begin->Height - cell_height) < 2 || nopass) && begin_zone != LastAdjacentZone && begin_zone != zone) { // was truncated to (unsigned short)
+		ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(begin_zone, zone)); // was truncated to (unsigned short) -- see ZONE_PAIR_HASH_SET (zone.hh)
 		LastAdjacentZone = begin_zone;
 	}
 
@@ -3090,8 +3101,8 @@ int MapClass::Zone_Span(CellZoneStruct * data, int zone, int & skip)
 	}
 
 	int end_zone = end->ZoneID;
-	if (end_zone != 0 && (abs(end->Height - cell_height) < 2 || nopass) && end_zone != LastAdjacentZone && end_zone != (unsigned short)zone) {
-		ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(end_zone, (unsigned short)zone));
+	if (end_zone != 0 && (abs(end->Height - cell_height) < 2 || nopass) && end_zone != LastAdjacentZone && end_zone != zone) { // was truncated to (unsigned short)
+		ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(end_zone, zone)); // was truncated to (unsigned short) -- see ZONE_PAIR_HASH_SET (zone.hh)
 		LastAdjacentZone = end_zone;
 	}
 
@@ -3130,8 +3141,9 @@ int MapClass::Zone_Span(CellZoneStruct * data, int zone, int & skip)
 				fbegin++;
 			}
 		} else {
-			if (zzone != (unsigned short)zone && zzone != LastAdjacentZone && (abs(fbegin->Height - adjacent->Height) < 2 || nopass)) {
-				ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(zzone, (unsigned short)zone));
+			// zzone/id comparisons were truncated to (unsigned short) before -- removed, see ZONE_PAIR_HASH_SET (zone.hh)
+			if (zzone != zone && zzone != LastAdjacentZone && (abs(fbegin->Height - adjacent->Height) < 2 || nopass)) {
+				ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(zzone, zone)); // was truncated to (unsigned short) -- see ZONE_PAIR_HASH_SET (zone.hh)
 				LastAdjacentZone = zzone;
 			}
 			fbegin++;
@@ -3161,8 +3173,9 @@ int MapClass::Zone_Span(CellZoneStruct * data, int zone, int & skip)
 				fbegin2++;
 			}
 		} else {
-			if (id != (unsigned short)zone && id != LastAdjacentZone && (abs(fbegin2->Height - adjacent->Height) < 2 || nopass)) {
-				ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(id, (unsigned short)zone));
+			// zzone/id comparisons were truncated to (unsigned short) before -- removed, see ZONE_PAIR_HASH_SET (zone.hh)
+			if (id != zone && id != LastAdjacentZone && (abs(fbegin2->Height - adjacent->Height) < 2 || nopass)) {
+				ZoneAdjacency->Add_Object(ZONE_PAIR_HASH_SET::ObjectType(id, zone)); // was truncated to (unsigned short) -- see ZONE_PAIR_HASH_SET (zone.hh)
 				LastAdjacentZone = id;
 			}
 			fbegin2++;
@@ -10128,7 +10141,7 @@ void MapClass::Reset_Subzone(int subzone)
 			track->Add(SubzoneTrackingStruct());
 
 			SubzoneTrackingStruct * added = &(*track)[entry_count]; // was truncated to (unsigned short) for no structural reason -- (*track) is int-indexed
-			added->ParentSubzoneID = (unsigned short)parent;
+			added->ParentSubzoneID = parent; // was truncated to (unsigned short) -- see zone.hh
 			added->Passability = (PassabilityType)passability;
 			added->Connections.Set_Growth_Step(16);
 			added->ThreatRegion = (short)X / REGION_WIDTH + MAP_REGION_WIDTH * ((short)Y / REGION_HEIGHT) + (MAP_REGION_WIDTH + 1);
@@ -10166,9 +10179,11 @@ void MapClass::Reset_Subzone(int subzone)
 		if (set->Buckets[bucket_index].Count() > 0) {
 			SUBZONE_CONNECTION_HASH_SET::ObjectType * object = &set->Buckets[bucket_index][0];
 			for (int index = set->Buckets[bucket_index].Count(); index > 0; index--) {
-				unsigned packed = object->Value.SubzoneID;
-				WORD low = LOWORD(packed);
-				WORD high = HIWORD(packed);
+				// Was `unsigned packed` + LOWORD/HIWORD (16-bit halves) -- see Zone_Pack32/
+				// SubzoneConnectionStruct::SubzoneID for why this is now a 64-bit pack.
+				long long packed = object->Value.SubzoneID;
+				int low = (int)(packed & 0xFFFFFFFFULL);
+				int high = (int)((unsigned long long)packed >> 32);
 				bool costly = object->Value.IsCrossBlock;
 
 				SubzoneConnectionStruct conn;
@@ -10252,10 +10267,10 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 		if (In_Local_Radar(probe, true)) {
 			probe = Cell(x + 1, y);
 			if (In_Local_Radar(probe, true)) {
-				int packed_pair = Zone_Pack32(begin_subzone, (unsigned short)subzone_id);
+				long long packed_pair = Zone_Pack32(begin_subzone, subzone_id); // was truncated to (unsigned short) -- see Zone_Pack32
 				entry.Value.IsCrossBlock = false;
 				entry.Key = entry.Value.SubzoneID = packed_pair;
-				table->Add_Object(Zone_Pack8(begin_subzone, (unsigned short)subzone_id), entry);
+				table->Add_Object(Zone_Pack8(begin_subzone, subzone_id), entry);
 				last_adjacent = begin_subzone;
 			}
 		}
@@ -10287,10 +10302,10 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 		if (In_Local_Radar(probe, true)) {
 			probe = Cell(end_x - 1, y);
 			if (In_Local_Radar(probe, true)) {
-				int packed_pair = Zone_Pack32(end_subzone, (unsigned short)subzone_id);
+				long long packed_pair = Zone_Pack32(end_subzone, subzone_id); // was truncated to (unsigned short) -- see Zone_Pack32
 				entry.Value.IsCrossBlock = false;
 				entry.Key = entry.Value.SubzoneID = packed_pair;
-				table->Add_Object(Zone_Pack8(end_subzone, (unsigned short)subzone_id), entry);
+				table->Add_Object(Zone_Pack8(end_subzone, subzone_id), entry);
 				last_adjacent = end_subzone;
 			}
 		}
@@ -10342,7 +10357,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 						shadow_cell.Y = y - 1;
 						shadow_cell.X = x;
 						if (In_Local_Radar(shadow_cell, true)) {
-							int packed_pair = Zone_Pack32(shadow_subzone, (unsigned short)subzone_id);
+							long long packed_pair = Zone_Pack32(shadow_subzone, subzone_id); // was truncated to (unsigned short) -- see Zone_Pack32
 							if (x < xmin) {
 								entry.Value.IsCrossBlock = true;
 							} else {
@@ -10352,7 +10367,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 								}
 							}
 							entry.Key = entry.Value.SubzoneID = packed_pair;
-							table->Add_Object(Zone_Pack8(shadow_subzone, (unsigned short)subzone_id), entry);
+							table->Add_Object(Zone_Pack8(shadow_subzone, subzone_id), entry);
 							last_adjacent = shadow_subzone;
 						}
 					}
@@ -10411,7 +10426,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 						shadow_cell.X = x;
 						shadow_cell.Y = y + 1;
 						if (In_Local_Radar(shadow_cell, true)) {
-							int packed_pair = Zone_Pack32(shadow_subzone, (unsigned short)subzone_id);
+							long long packed_pair = Zone_Pack32(shadow_subzone, subzone_id); // was truncated to (unsigned short) -- see Zone_Pack32
 							if (x < xmin) {
 								entry.Value.IsCrossBlock = true;
 							} else {
@@ -10421,7 +10436,7 @@ int MapClass::Subzone_Span(CellSubzoneStruct * seed, int subzone_level, int subz
 								}
 							}
 							entry.Key = entry.Value.SubzoneID = packed_pair;
-							table->Add_Object(Zone_Pack8(shadow_subzone, (unsigned short)subzone_id), entry);
+							table->Add_Object(Zone_Pack8(shadow_subzone, subzone_id), entry);
 							last_adjacent = shadow_subzone;
 						}
 					}
@@ -10511,7 +10526,9 @@ void MapClass::Register_Zone_Connection_Entries(ZoneConnectionClass & connection
 		int from_zone = CellSubzones[Get_Cell_Subzone_Index(from)].SubzoneID[index];
 		int to_zone = CellSubzones[Get_Cell_Subzone_Index(to)].SubzoneID[index];
 
-		int value = Zone_Pack32(from_zone, to_zone);
+		// `value` was `int` -- Zone_Pack32 returns unsigned long long (see zone.hh), so this
+		// truncated the packed pair straight back down to 32 bits, undoing the widening.
+		long long value = Zone_Pack32(from_zone, to_zone);
 		int bucket_index = Zone_Pack8(from_zone, to_zone);
 		connstr.Key = value;
 		connstr.Value = SubzoneConnectionStruct(value);
@@ -10523,7 +10540,9 @@ void MapClass::Register_Zone_Connection_Entries(ZoneConnectionClass & connection
 		int from_zone = CellSubzones[Get_Cell_Subzone_Index(enter1)].SubzoneID[index];
 		int to_zone = CellSubzones[Get_Cell_Subzone_Index(newcell1)].SubzoneID[index];
 
-		int value = Zone_Pack32(from_zone, to_zone);
+		// `value` was `int` -- Zone_Pack32 returns unsigned long long (see zone.hh), so this
+		// truncated the packed pair straight back down to 32 bits, undoing the widening.
+		long long value = Zone_Pack32(from_zone, to_zone);
 		int bucket_index = Zone_Pack8(from_zone, to_zone);
 		connstr.Key = value;
 		connstr.Value = SubzoneConnectionStruct(value);
@@ -10535,7 +10554,9 @@ void MapClass::Register_Zone_Connection_Entries(ZoneConnectionClass & connection
 		int from_zone = CellSubzones[Get_Cell_Subzone_Index(enter2)].SubzoneID[index];
 		int to_zone = CellSubzones[Get_Cell_Subzone_Index(newcell2)].SubzoneID[index];
 
-		int value = Zone_Pack32(from_zone, to_zone);
+		// `value` was `int` -- Zone_Pack32 returns unsigned long long (see zone.hh), so this
+		// truncated the packed pair straight back down to 32 bits, undoing the widening.
+		long long value = Zone_Pack32(from_zone, to_zone);
 		int bucket_index = Zone_Pack8(from_zone, to_zone);
 		connstr.Key = value;
 		connstr.Value = SubzoneConnectionStruct(value);
@@ -10801,7 +10822,7 @@ Cell MapClass::Find_Bridge_End_Cell_For_Subzone(Cell const & cell, int subzone_l
 /// <param name="foot">The unit whose ability to enter a cell decides what counts as
 /// blocked.</param>
 /// <returns>bool; Is part of the subzone itself cut off from the starting cell?</returns>
-bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, DynamicVectorClass<unsigned short> const & connections, FootClass const * foot)
+bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, DynamicVectorClass<int> const & connections, FootClass const * foot) // was DynamicVectorClass<unsigned short>
 {
 	/*
 	 * The flood is bounded by one coarse block, so the scratch it needs is a fixed size and
@@ -10814,7 +10835,7 @@ bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, Dyn
 
 	int dim = 1 << (subzone_level + 1);
 
-	DynamicVectorClass<unsigned short> list;
+	DynamicVectorClass<int> list; // was DynamicVectorClass<unsigned short>
 	list.Clear();
 
 	if (dim > 0) {
@@ -10823,9 +10844,9 @@ bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, Dyn
 		}
 	}
 
-	unsigned short other_subzone = 0;
+	int other_subzone = 0; // was `unsigned short`
 	int count = 1;
-	unsigned short start_subzone = CellSubzones[Get_Cell_Subzone_Index(cptr->CellID)].SubzoneID[subzone_level];
+	int start_subzone = CellSubzones[Get_Cell_Subzone_Index(cptr->CellID)].SubzoneID[subzone_level]; // was `unsigned short`
 	_subzone_flood_stack[0] = cptr;
 	_subzone_flood_visited[(dim - 1) & cptr->CellID.X][(dim - 1) & cptr->CellID.Y] = 1;
 
@@ -10843,7 +10864,7 @@ bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, Dyn
 			CellClass * adj = &cur->Adjacent_Cell(facing);
 			int ax = (dim - 1) & adj->CellID.X;
 			int ay = (dim - 1) & adj->CellID.Y;
-			unsigned short adj_subzone = CellSubzones[Get_Cell_Subzone_Index(adj->CellID)].SubzoneID[subzone_level];
+			int adj_subzone = CellSubzones[Get_Cell_Subzone_Index(adj->CellID)].SubzoneID[subzone_level]; // was `unsigned short`
 
 			if (foot->Can_Enter_Cell(adj, facing, adj->Height, NULL, true) == MOVE_OK || mzone_table[adj->Passability] != TRAVERSAL_PASSABLE) {
 
@@ -10895,7 +10916,7 @@ bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, Dyn
 			Cell c = cptr->CellID + Cell(bx, by);
 
 			if (In_Local_Radar(c, true)) {
-				if (start_subzone == (unsigned short)CellSubzones[Get_Cell_Subzone_Index(c)].SubzoneID[subzone_level] && !_subzone_flood_visited[row][col]) {
+				if (start_subzone == CellSubzones[Get_Cell_Subzone_Index(c)].SubzoneID[subzone_level] && !_subzone_flood_visited[row][col]) { // was truncated to (unsigned short)
 					return(true);
 				}
 			}
@@ -10917,7 +10938,7 @@ bool MapClass::Build_Reachable_Subzones(CellClass * cptr, int subzone_level, Dyn
 				}
 			}
 			if (j == -1) {
-				((DynamicVectorClass<unsigned short> &)connections).Add(sub);
+				((DynamicVectorClass<int> &)connections).Add(sub); // was DynamicVectorClass<unsigned short>
 			}
 
 			conn--;
@@ -10961,7 +10982,7 @@ void MapClass::Update_Cell_Subzones(Cell const & cell)
 			/*
 			 * Clear out every bucket of the connection hash set for this level.
 			 */
-			DynamicVectorClass<unsigned short> collected;
+			DynamicVectorClass<int> collected; // was DynamicVectorClass<unsigned short>
 			SUBZONE_CONNECTION_HASH_SET * set = SubzoneConnectionHashTable[subzone];
 			for (int bucket = 0; bucket < set->NumBuckets; bucket++) {
 				set->Buckets[bucket].Clear();
@@ -10976,7 +10997,7 @@ void MapClass::Update_Cell_Subzones(Cell const & cell)
 			for (y = bounds.Y; y < bounds.Y + bounds.Height; y++) {
 				for (x = bounds.X; x < bounds.Width + bounds.X; x++) {
 					CellSubzoneStruct * subptr = &CellSubzones[(short)x + (short)y * (PlayRect.Width + PlayRect.Height + 1)];
-					unsigned short subid = subptr->SubzoneID[subzone];
+					int subid = subptr->SubzoneID[subzone]; // was `unsigned short`
 					if (subid != 0) {
 						int found;
 						for (found = collected.Count() - 1; found >= 0; found--) {
@@ -10999,10 +11020,10 @@ void MapClass::Update_Cell_Subzones(Cell const & cell)
 			 * then clear its own connection list.
 			 */
 			for (int idx = collected.Count() - 1; idx >= 0; idx--) {
-				unsigned short subid = collected[idx];
+				int subid = collected[idx]; // was `unsigned short`
 				SubzoneTrackingStruct * entry = &SubzoneTracking[subzone][subid];
 				for (int i = entry->Connections.Count() - 1; i >= 0; i--) {
-					SubzoneTrackingStruct * neighbor = &SubzoneTracking[subzone][entry->Connections[i].SubzoneID];
+					SubzoneTrackingStruct * neighbor = &SubzoneTracking[subzone][(int)entry->Connections[i].SubzoneID]; // explicit narrowing cast -- SubzoneID is long long (packed-pair carrier type), but this is a fully-unpacked, always-small id
 					int j;
 					for (j = neighbor->Connections.Count() - 1; j >= 0; j--) {
 						if (neighbor->Connections[j].SubzoneID == subid) {
@@ -11042,7 +11063,7 @@ void MapClass::Update_Cell_Subzones(Cell const & cell)
 							if (subzone != 2) {
 								parent = subptr->SubzoneID[subzone + 1];
 							}
-							added->ParentSubzoneID = parent;
+							added->ParentSubzoneID = parent; // was truncated to (unsigned short) -- see zone.hh
 							added->Passability = (PassabilityType)passability;
 							added->Connections.Set_Growth_Step(16);
 							added->ThreatRegion = (short)x / REGION_WIDTH + MAP_REGION_WIDTH * ((short)y / REGION_HEIGHT) + (MAP_REGION_WIDTH + 1);
@@ -11081,9 +11102,11 @@ void MapClass::Update_Cell_Subzones(Cell const & cell)
 				if (set->Buckets[bucket_index].Count() > 0) {
 					SUBZONE_CONNECTION_HASH_SET::ObjectType * object = &set->Buckets[bucket_index][0];
 					for (int index = set->Buckets[bucket_index].Count(); index > 0; index--) {
-						unsigned packed = object->Value.SubzoneID;
-						WORD low = LOWORD(packed);
-						WORD high = HIWORD(packed);
+						// Was `unsigned packed` + LOWORD/HIWORD (16-bit halves) -- see Zone_Pack32/
+						// SubzoneConnectionStruct::SubzoneID for why this is now a 64-bit pack.
+						long long packed = object->Value.SubzoneID;
+						int low = (int)(packed & 0xFFFFFFFFULL);
+						int high = (int)((unsigned long long)packed >> 32);
 						bool costly = object->Value.IsCrossBlock;
 
 						SubzoneConnectionStruct conn;

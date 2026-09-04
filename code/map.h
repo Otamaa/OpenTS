@@ -151,7 +151,7 @@ class MapClass: public GScreenClass
 		Cell Get_Zone_Connection_Destination(Cell const & cell, Cell const & reference);
 		Cell Find_Bridge_Span_End_Cell(Cell const & cell, Cell const & reference);
 		Cell Find_Bridge_End_Cell_For_Subzone(Cell const & cell, int subzone_level, int subzone_id);
-		bool Build_Reachable_Subzones(CellClass * cptr, int subzone_level, DynamicVectorClass<unsigned short> const & connections, FootClass const * foot);
+		bool Build_Reachable_Subzones(CellClass * cptr, int subzone_level, DynamicVectorClass<int> const & connections, FootClass const * foot); // was DynamicVectorClass<unsigned short>
 		void Update_Cell_Subzones(Cell const & cell);
 		void Register_Subzone_Connection(ZoneConnectionClass * connection);
 		void Unregister_Subzone_Connection(ZoneConnectionClass * connection);
@@ -555,5 +555,5 @@ class MapClass: public GScreenClass
 
 extern CellClass BlubCell;
 
-int SubzoneHash(unsigned int const & key);
+int SubzoneHash(unsigned long long const & key);
 extern int MZonePassability[MZONE_COUNT][PASSABLE_COUNT];

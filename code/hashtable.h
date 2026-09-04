@@ -141,7 +141,13 @@ inline HashTableClass<K, V>::~HashTableClass(void)
 template<typename K, typename V>
 inline bool HashTableClass<K, V>::Add_Object(ObjectType const & object)
 {
-	unsigned packed = object.Value | (object.Key << 16);
+	// Was `unsigned packed = object.Value | (object.Key << 16)` -- 16 bits per half, same
+	// collision risk as Zone_Pack32 (map.cpp) once a value exceeds 65535. Widened to pack full
+	// 32-bit halves into a 64-bit value. K/V must be (or losslessly convert to/from) an integer
+	// type at least 32 bits wide for callers of this specific overload -- currently only
+	// ZoneAdjacency (ZONE_PAIR_HASH_SET, K=V=unsigned long long); other instantiations
+	// (e.g. RADAR_HASH_TABLE) never call this overload, so this constraint doesn't apply to them.
+	unsigned long long packed = (unsigned long long)(unsigned)object.Value | ((unsigned long long)(unsigned)object.Key << 32);
 	BucketType & bucket = Buckets[object.Value & 0xF | ((object.Key & 0xF) << 4)];
 
 	if (bucket.Count() > 0) {

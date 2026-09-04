@@ -412,7 +412,7 @@ PathStruct * AStarClass::Find_Path_Regular(Cell const & from, Cell const & to, F
 			int zone_index = Map.Get_Cell_Zone_Index(neighbor_id);
 			CellSubzoneStruct * subzones = Map.CellSubzones;
 
-			short subzone_id = subzones[zone_index].SubzoneID[SUBZONE_FINE];
+			int subzone_id = subzones[zone_index].SubzoneID[SUBZONE_FINE]; // was `short` -- truncated on large maps, see zone.hh
 			if (fine_final_ids[subzone_id] != UniqueID && base_level && !neighbor_cell->AdjacentObjectCount && with_hs) {
 				continue;
 			}
@@ -1661,7 +1661,7 @@ bool AStarClass::Find_Path_Hierarchical(Cell const & from, Cell const & to, MZon
 				int conn_count = Map.SubzoneTracking[subzone_level][from_subzone].Connections.Count();
 				for (int conn_idx = 0; conn_idx < conn_count; conn_idx++) {
 					int threat = 0;
-					int to_subzone = connection[conn_idx].SubzoneID;
+					int to_subzone = (int)connection[conn_idx].SubzoneID; // explicit narrowing cast -- SubzoneID is long long (packed-pair carrier type), but this is a fully-unpacked, always-small id
 					bool is_cross_block = connection[conn_idx].IsCrossBlock;
 					PassabilityType passability = Map.SubzoneTracking[subzone_level][to_subzone].Passability;
 					int to_coarser_subzone = Map.SubzoneTracking[subzone_level][to_subzone].ParentSubzoneID;
@@ -1859,13 +1859,13 @@ void AStarClass::Ban_Blocked_Subzone_Edges(FootClass const * foot)
 	CellSubzoneStruct & subzone = Map.CellSubzones[Map.Get_Cell_Zone_Index(HierLastNodeCell)];
 
 	for (int subzone_level = 0; subzone_level < SUBZONE_COUNT; subzone_level++) {
-		unsigned short from_subzone = subzone.SubzoneID[subzone_level];
-		DynamicVectorClass<unsigned short> to_subzones;
+		int from_subzone = subzone.SubzoneID[subzone_level]; // was `unsigned short`
+		DynamicVectorClass<int> to_subzones; // was DynamicVectorClass<unsigned short>
 		to_subzones.Clear();
 
 		if (Map.Build_Reachable_Subzones(&Map[HierLastNodeCell], subzone_level, to_subzones, foot)) {
 			CellSubzoneStruct & last_subzone = Map.CellSubzones[Map.Get_Cell_Zone_Index(HierLastNodeCell)];
-			unsigned int subzone_id = (unsigned short)last_subzone.SubzoneID[subzone_level];
+			unsigned int subzone_id = (unsigned int)last_subzone.SubzoneID[subzone_level]; // was truncated to (unsigned short)
 			Ban_Neighborhood_Subzone_Edges(subzone_id, subzone_level);
 			continue;
 		}
@@ -1884,14 +1884,17 @@ void AStarClass::Ban_Blocked_Subzone_Edges(FootClass const * foot)
 /// </summary>
 /// <param name="subzone_level">The coarseness level the link belongs to.</param>
 /// <returns>bool; Is the link banned?</returns>
-bool AStarClass::Subzone_Edge_Banned(unsigned short subzone1, unsigned short subzone2, int subzone_level)
+bool AStarClass::Subzone_Edge_Banned(int subzone1, int subzone2, int subzone_level) // was (unsigned short, unsigned short, int)
 {
 	if (subzone2 < subzone1) {
 		std::swap(subzone1, subzone2);
 	}
-	unsigned int edge = subzone2 | (subzone1 << 16);
+	// Was `unsigned int edge = subzone2 | (subzone1 << 16)` -- same 16-bit-per-id collision
+	// risk as Zone_Pack32 (map.cpp) once a level exceeds 65535 subzones. Widened to pack full
+	// 32-bit halves into a 64-bit key; HierBannedEdges widened to match (astar.h).
+	unsigned long long edge = ((unsigned long long)(unsigned)subzone2 << 32) | (unsigned long long)(unsigned)subzone1;
 
-	DynamicVectorClass<unsigned int> & edges = HierBannedEdges[subzone_level];
+	DynamicVectorClass<unsigned long long> & edges = HierBannedEdges[subzone_level];
 	for (int i = edges.Count() - 1; i >= 0; i--) {
 		if (edges[i] == edge) {
 			return(true);
@@ -1913,7 +1916,8 @@ void AStarClass::Ban_Subzone_Edge(unsigned int subzone1, unsigned int subzone2, 
 		if (subzone2 < subzone1) {
 			std::swap(subzone2, subzone1);
 		}
-		unsigned int edge = subzone2 | (subzone1 << 16);
+		// Matches Subzone_Edge_Banned's packing above -- must stay in sync.
+		unsigned long long edge = ((unsigned long long)(unsigned)subzone2 << 32) | (unsigned long long)(unsigned)subzone1;
 		HierBannedEdges[subzone_level].Add(edge);
 	}
 }
@@ -1950,8 +1954,8 @@ void AStarClass::Ban_Neighborhood_Subzone_Edges(unsigned int subzone, int subzon
 	if (path_index == -1) {
 		IsHSEnabled = false;
 	} else {
-		unsigned short path_node;
-		unsigned short path_neighbor;
+		int path_node; // was `unsigned short` -- truncated HierSubzonePath's now-int values
+		int path_neighbor; // was `unsigned short`
 		if (path_index == path_count - 1) {
 			path_node = HierSubzonePath[subzone_level][path_index];
 			path_neighbor = HierSubzonePath[subzone_level][path_index - 1];
@@ -1966,7 +1970,7 @@ void AStarClass::Ban_Neighborhood_Subzone_Edges(unsigned int subzone, int subzon
 		DynamicVectorClass<SubzoneConnectionStruct> & neighbor_conn = Map.SubzoneTracking[subzone_level][path_neighbor].Connections;
 
 		for (j = node_conn.Count() - 1; j >= 0; j--) {
-			unsigned short common_subzone = node_conn[j].SubzoneID;
+			int common_subzone = (int)node_conn[j].SubzoneID; // was `unsigned short` -- truncated once a level exceeds 65535 subzones
 			if (common_subzone != path_neighbor) {
 				for (i = neighbor_conn.Count() - 1; i >= 0; i--) {
 					if (neighbor_conn[i].SubzoneID == common_subzone) {
