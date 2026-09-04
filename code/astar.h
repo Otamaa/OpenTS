@@ -125,21 +125,33 @@ class AStarClass
 			 * These are all the search nodes one path attempt may use. They are handed out
 			 * in order and never individually released.
 			 *
-			 * Sized as a fraction of MAP_CELL_TOTAL (was a literal 131072, i.e.
-			 * MAP_CELL_TOTAL/2 back when the map was fixed at 512x512) so the budget
-			 * scales with the compiled-in map size instead of silently starving
-			 * pathfinding on larger maps. This pool is heap-allocated (see
-			 * AStarClass::RegularNodes), so the memory cost of this scaling is real:
-			 * on the 64-bit 4096x4096 cap that's ~8.4M nodes here.
+			 * Heap-allocated and sized to the *actual* map (AStarClass::Update_Map_Dimensions,
+			 * as a fraction of that map's cell count) rather than a fixed MAP_CELL_TOTAL/2 --
+			 * the latter meant every game paid the cost of the largest map this build supports
+			 * at startup, before any map even existed, regardless of what was actually loaded.
+			 * Resize() is a no-op once Capacity already covers what's asked for, so repeated
+			 * calls from Update_Map_Dimensions (e.g. loading several maps in a session) don't
+			 * reallocate unless the new map is actually bigger than any seen so far.
 			 */
-			RegularNode Nodes[MAP_CELL_TOTAL / 2];
+			RegularNode * Nodes;
+			int Capacity;
 
 			/*
 			 * This is the number of nodes handed out so far, and so the index the next one
-			 * comes from. Emptying the pool is a matter of zeroing it.
+			 * comes from. Emptying the pool is a matter of resetting this to 0.
 			 */
 			int ActiveCount;
-			RegularNodePool(void) : ActiveCount(0) {}
+			RegularNodePool(void) : Nodes(NULL), Capacity(0), ActiveCount(0) {}
+			~RegularNodePool(void) { delete[] Nodes; }
+
+			void Resize(int capacity)
+			{
+				if (capacity > Capacity) {
+					delete[] Nodes;
+					Nodes = new RegularNode[capacity];
+					Capacity = capacity;
+				}
+			}
 		};
 
 		struct RegularOpenNodePool {
@@ -147,17 +159,30 @@ class AStarClass
 			 * These are all the open set entries one path attempt may use, handed out in
 			 * order as the search reaches new cells.
 			 *
-			 * Sized as a fraction of MAP_CELL_TOTAL (was a literal 65536, i.e.
-			 * MAP_CELL_TOTAL/4 at the old 512x512 map size); see RegularNodePool above.
+			 * Heap-allocated and dynamically sized -- see RegularNodePool above. This one
+			 * matters more than RegularNodePool for startup cost: RegularOpenNode has a
+			 * non-trivial constructor, so `new RegularOpenNode[N]` is an actual per-element
+			 * constructor call for all N entries, not just a raw memory reservation.
 			 */
-			RegularOpenNode Nodes[MAP_CELL_TOTAL / 4];
+			RegularOpenNode * Nodes;
+			int Capacity;
 
 			/*
 			 * This is the number of entries handed out so far, and so the index the next
 			 * one comes from.
 			 */
 			int ActiveCount;
-			RegularOpenNodePool(void) : ActiveCount(0) {}
+			RegularOpenNodePool(void) : Nodes(NULL), Capacity(0), ActiveCount(0) {}
+			~RegularOpenNodePool(void) { delete[] Nodes; }
+
+			void Resize(int capacity)
+			{
+				if (capacity > Capacity) {
+					delete[] Nodes;
+					Nodes = new RegularOpenNode[capacity];
+					Capacity = capacity;
+				}
+			}
 		};
 
 	private:

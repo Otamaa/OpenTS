@@ -652,9 +652,13 @@ AStarClass::AStarClass(void) :
 	HierNodeIndex(-1),
 	HierLastNodeCell(0,0)
 {
-	// Capacity matches RegularOpenNodePool::Nodes (astar.h) -- every open-node
-	// handed out from that pool gets pushed here, so the two must track together.
-	RegularQueue = new PriorityQueueClass<RegularOpenNode>(MAP_CELL_TOTAL / 4);
+	// RegularQueue, RegularNodes, and RegularOpenNodes used to be allocated here at their
+	// compile-time-maximum size (MAP_CELL_TOTAL/4 and /2) -- meaning every game paid that
+	// allocation (and, for RegularOpenNodePool, millions of RegularOpenNode constructor
+	// calls) at startup, before any map existed, regardless of what map actually got loaded.
+	// Real sizing now happens in Update_Map_Dimensions, against the map that's actually in
+	// play. These start minimal; Update_Map_Dimensions runs before any pathfind can happen.
+	RegularQueue = new PriorityQueueClass<RegularOpenNode>(1);
 	HierQueue = new PriorityQueueClass<AStarHierarchicalNode>(10000); // VERIFY: subzone-count heuristic, not cell-count -- left as-is, see changelog
 	RegularOpenNodes = new RegularOpenNodePool;
 	RegularNodes = new RegularNodePool;
@@ -836,6 +840,23 @@ void AStarClass::Update_Map_Dimensions(Rect const & dimensions)
 	RegularVisited = new int[count];
 	RegularMovementCosts = new float[count];
 	RegularBridgeMovementCosts = new float[count];
+
+	// Same ratios the pools always used (count/2, count/4) -- just against the actual map's
+	// cell count now instead of the compile-time MAP_CELL_TOTAL maximum. Resize() only
+	// reallocates if this map needs more than any pool has held so far, so loading a series
+	// of same-or-smaller maps in one session doesn't pay repeated allocation cost.
+	int const node_capacity = count / 2;
+	int const open_node_capacity = count / 4;
+	RegularNodes->Resize(node_capacity);
+	RegularOpenNodes->Resize(open_node_capacity);
+
+	// PriorityQueueClass has no resize of its own -- its Heap is sized once at construction
+	// (priority.h) -- so matching RegularOpenNodePool's capacity means replacing it outright
+	// when a bigger map needs more room than it currently has.
+	if (RegularQueue == NULL || RegularQueue->Size < open_node_capacity) {
+		delete RegularQueue;
+		RegularQueue = new PriorityQueueClass<RegularOpenNode>(open_node_capacity);
+	}
 
 	AStarFacingToOffset[FACING_N]	= -MapCellStride;
 	AStarFacingToOffset[FACING_NE]	= 1 - MapCellStride;
