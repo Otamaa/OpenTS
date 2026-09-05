@@ -296,9 +296,9 @@ CellClass::CellClass(void) :
 	Tube(-1),
 	ShadowFrame(-2),
 	FogFrame(-2),
-	CloakedBy(0),
-	SensedBy(0),
-	OccupiedBy(0),
+	CloakedBy(),
+	SensedBy(),
+	OccupiedBy(),
 	Intensity(0x10000),
 	Ambient(0),
 	Brightness(NORMAL_LIGHT),
@@ -5949,14 +5949,14 @@ void CellClass::Remove_Fogged_Objects(void)
 /// the house does not occupy this cell at all, -1 is returned.</returns>
 int CellClass::Occupation_Mask(HousesType house) const
 {
-	if (!(OccupiedBy & (1 << house))) {
+	if (!OccupiedBy.Is_Set(house)) {
 		return(-1);
 	}
 
 	int mask = 0;
 	for (int dir = 0; dir < FACING_COUNT; dir++) {
 		CellClass const & adjacent = Adjacent_Cell(FacingType(dir));
-		if (adjacent.OccupiedBy & (1 << house)) {
+		if (adjacent.OccupiedBy.Is_Set(house)) {
 			mask |= (1 << dir);
 		}
 	}
@@ -6027,7 +6027,7 @@ bool CellClass::Can_Burrow_Here(void) const
 /// <returns>bool; Is the cell cloaked by that house?</returns>
 bool CellClass::Is_Cloaked(HousesType house) const
 {
-	return((CloakedBy & (1 << house)) != 0);
+	return(CloakedBy.Is_Set(house));
 }
 
 
@@ -6037,7 +6037,7 @@ bool CellClass::Is_Cloaked(HousesType house) const
 /// <returns>bool; Is the cell sensed by that house?</returns>
 bool CellClass::Is_Sensed(HousesType house) const
 {
-	return((SensedBy & (1 << house)) != 0);
+	return(SensedBy.Is_Set(house));
 }
 
 
@@ -6047,7 +6047,7 @@ bool CellClass::Is_Sensed(HousesType house) const
 /// </summary>
 void CellClass::Cloaked_By(HousesType house)
 {
-	CloakedBy |= (1 << house);
+	CloakedBy.Set(house);
 }
 
 
@@ -6057,7 +6057,7 @@ void CellClass::Cloaked_By(HousesType house)
 /// </summary>
 void CellClass::Uncloaked_By(HousesType house)
 {
-	CloakedBy &= ~(1 << house);
+	CloakedBy.Clear(house);
 }
 
 
@@ -6067,7 +6067,7 @@ void CellClass::Uncloaked_By(HousesType house)
 /// </summary>
 void CellClass::Sensed_By(HousesType house)
 {
-	SensedBy |= (1 << house);
+	SensedBy.Set(house);
 }
 
 
@@ -6078,7 +6078,7 @@ void CellClass::Sensed_By(HousesType house)
 /// </summary>
 void CellClass::Unsensed_By(HousesType house)
 {
-	SensedBy &= ~(1 << house);
+	SensedBy.Clear(house);
 }
 
 

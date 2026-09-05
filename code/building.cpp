@@ -1154,7 +1154,7 @@ void BuildingClass::Draw_Overlays(Point2D const & point, Rect const & cliprect) 
 		}
 	}
 
-	if (IsSelected && (House->Shares_View_With(PlayerPtr) || SpiedBy & (1<<(PlayerPtr->Class->House)))) {
+	if (IsSelected && (House->Shares_View_With(PlayerPtr) || SpiedBy.Is_Set(PlayerPtr->Class->House))) {
 		Draw_Text_Overlay(point + Point2D(-10, 10), point, cliprect);
 	}
 
@@ -1162,7 +1162,7 @@ void BuildingClass::Draw_Overlays(Point2D const & point, Rect const & cliprect) 
 	**	If this is a factory that we're spying on, or the player has the whole map, show what
 	**	it's producing
 	*/
-	if ((SpiedBy & (1<<(PlayerPtr->Class->House)) || Session.ObiWan) && IsSelected) {
+	if ((SpiedBy.Is_Set(PlayerPtr->Class->House) || Session.ObiWan) && IsSelected) {
 
 		/*
 		**	Fetch the factory that is associate with this building. For computer controlled buildings, the
@@ -2091,7 +2091,7 @@ void BuildingClass::Do_Destruction(TechnoClass *last_contact, TechnoClass *sourc
 	**	center will cause the spiedby field to change...
 	*/
 	if (SpiedBy) {
-		SpiedBy = 0;
+		SpiedBy.Clear_All();
 		if (Class->IsRadar) {
 			Update_Radar_Spied();
 		}
@@ -4230,8 +4230,8 @@ bool BuildingClass::Captured(HouseClass * newowner)
 		**	Make sure the capturer isn't spying on his own building, and if
 		**	it was a radar facility, update the target house's RadarSpied field.
 		*/
-		if (SpiedBy & (1<<(newowner->Class->House)) ) {
-			SpiedBy -= (1<<(newowner->Class->House));
+		if (SpiedBy.Is_Set(newowner->Class->House)) {
+			SpiedBy.Clear(newowner->Class->House);
 			if (Class->IsRadar) {
 				Update_Radar_Spied();
 			}
@@ -4362,8 +4362,8 @@ bool BuildingClass::Captured(HouseClass * newowner)
 		**	If it was spied upon by the player who just captured it, clear the
 		**	spiedby flag for that house.
 		*/
-		if (SpiedBy & (1 << (newowner->Class->House))) {
-			SpiedBy &= ~(1 << (newowner->Class->House));
+		if (SpiedBy.Is_Set(newowner->Class->House)) {
+			SpiedBy.Clear(newowner->Class->House);
 		}
 
 		Update_Anim_Appearance();
@@ -6852,7 +6852,7 @@ Cell BuildingClass::Check_Point(CheckPointType cp) const
  *=============================================================================================*/
 void BuildingClass::Update_Radar_Spied(void)
 {
-	House->RadarSpied = 0;
+	House->RadarSpied.Clear_All();
 	for (int index = 0; index < Buildings.Count(); index++) {
 		BuildingClass * obj = Buildings[index];
 		if (obj && !obj->IsInLimbo && obj->House == House) {
@@ -9530,12 +9530,12 @@ void BuildingClass::Reserve_Base_Area(bool skip_inner_cells)
 	int width = 2 * spacing + Class->Width();
 	int height = 2 * spacing + Class->Height();
 
-	unsigned owner = 1 << House->HeapID;
+	int owner = House->HeapID;
 	Cell top_left = PositionCoord.As_Cell() - Cell(spacing, spacing);
 
 	for (int x = top_left.X; x < top_left.X + width; x++) {
 		for (int y = top_left.Y; y < top_left.Y + height; y++) {
-			Map[Cell(x, y)].OccupiedBy |= owner;
+			Map[Cell(x, y)].OccupiedBy.Set(owner);
 		}
 	}
 
@@ -9593,14 +9593,14 @@ void BuildingClass::Release_Base_Area(void)
 	int width = 2 * spacing + Class->Width();
 	int height = 2 * spacing + Class->Height();
 
-	unsigned owner = 1 << House->HeapID;
+	int owner = House->HeapID;
 	Cell top_left = PositionCoord.As_Cell() - Cell(spacing, spacing);
 
 	int x, y;
 
 	for (x = top_left.X; x < top_left.X + width; x++) {
 		for (y = top_left.Y; y < top_left.Y + height; y++) {
-			Map[Cell(x, y)].OccupiedBy &= ~owner;
+			Map[Cell(x, y)].OccupiedBy.Clear(owner);
 		}
 	}
 
@@ -9625,7 +9625,7 @@ void BuildingClass::Release_Base_Area(void)
 				}
 			} else {
 				House->Base.InnerCells.Delete(cell);
-				Map[cell].OccupiedBy &= ~owner;
+				Map[cell].OccupiedBy.Clear(owner);
 			}
 		}
 	}
@@ -9919,7 +9919,7 @@ bool BuildingClass::Is_Radar_Visible(DetectedType & detected) const
 /// <param name="house">The house that has gained the intelligence.</param>
 void BuildingClass::Spied_By(HouseClass * house)
 {
-	SpiedBy |= 1 << house->Class->House;
+	SpiedBy.Set(house->Class->House);
 	if (Class->IsRadar) {
 		House->Update_Spied_Radar(house);
 	}

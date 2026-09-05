@@ -35,6 +35,7 @@
 #include "_map.h"
 #include "abstract.h"
 #include "globals.h"
+#include "housemask.h"
 #include "map.h"
 #include "rect.h"
 
@@ -171,10 +172,12 @@ class CellClass : public AbstractClass
 		 * cell -- one bit per house. Cloaking and sensing are per house because an object
 		 * hidden from one player may be plainly visible to another, and the occupation
 		 * bits let base placement logic tell whose structures already stand here.
+		 * EXTENSION: were `unsigned` (32-house ceiling via `1 << house`); now
+		 * HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		 */
-		unsigned CloakedBy;
-		unsigned SensedBy;
-		unsigned OccupiedBy;
+		HouseBitArray CloakedBy;
+		HouseBitArray SensedBy;
+		HouseBitArray OccupiedBy;
 
 	private:
 

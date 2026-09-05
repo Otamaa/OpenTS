@@ -16,6 +16,7 @@
 
 #include <array>
 #include <deque>
+#include <queue>
 #include <optional>
 #include <source_location>
 #include <string>
@@ -23,6 +24,12 @@
 #include <typeinfo>
 #include <utility>
 #include <vector>
+#include <map>
+#include <unordered_map>
+#include <set>
+#include <unordered_set>
+#include <list>
+#include <tuple>
 
 class SaveStreamClass;
 
@@ -36,7 +43,7 @@ concept SwizzleTarget = std::is_base_of_v<AbstractClass, std::remove_cv_t<T>>
 
 template<typename T>
 concept HasSerializeMember = requires(T & object, SaveStreamClass & stream) {
-	object.Serialize(stream);
+	 { object.Serialize(stream) } -> std::same_as<void>;
 };
 
 /*
@@ -222,6 +229,76 @@ class SaveStreamClass
 		}
 
 		/*
+		 * A map travels as its length followed by its key-value pairs.
+		 * Elements are serialized in sorted order.
+		 */
+		template<typename Tkey, typename Tvalue> 
+		void Serialize(std::map<Tkey, Tvalue> & value, std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+				value.clear();
+
+				for (int index = 0; index < count; index++) {
+					Tkey key{};
+					Tvalue mapped{};
+
+					Serialize_Element(key, where);
+					Serialize_Element(mapped, where);
+
+					value.emplace(std::move(key), std::move(mapped));
+				}
+
+			} else {
+				for (const auto& internal : value) {
+					Serialize_Element(const_cast<Tkey&>(internal.first), where);
+					Serialize_Element(const_cast<Tvalue&>(internal.second), where);
+				}
+			}
+		}
+
+		/*
+		 * An unordered map travels as its length followed by its key-value pairs.
+		 * Elements are serialized in hash table order (implementation-defined).
+		 */
+		template<typename Tkey, typename Tvalue> 
+		void Serialize(std::unordered_map<Tkey, Tvalue> & value, std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+				value.clear();
+				value.reserve(count);
+
+				for (int index = 0; index < count; index++) {
+					Tkey key{};
+					Tvalue mapped{};
+
+					Serialize_Element(key, where);
+					Serialize_Element(mapped, where);
+
+					value.emplace(std::move(key), std::move(mapped));
+				}
+			} else {
+				for (const auto& internal : value) {
+					Serialize_Element(const_cast<Tkey&>(internal.first), where);
+					Serialize_Element(const_cast<Tvalue&>(internal.second), where);
+				}
+			}
+		}
+
+		/*
 		 * An optional value is a flag followed by the value itself when there is one.
 		 */
 		template<typename T>
@@ -267,6 +344,42 @@ class SaveStreamClass
 		}
 
 		/*
+		 * A queue travels as its length followed by its elements. Since std::queue
+		 * doesn't provide iteration without popping, we make a copy for saving.
+		 */
+		template<typename T, typename Container>
+		void Serialize(std::queue<T, Container> & value, std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+        
+				value = std::queue<T, Container>();
+        
+				for (int index = 0; index < count; index++) {
+					T element{};
+					Serialize_Element(element, where);
+					value.push(element);
+				}
+			} else {
+				// For saving, create a copy to iterate without modifying the original
+				std::queue<T, Container> temp = value;
+        
+				while (!temp.empty()) {
+					// const_cast is safe here because we're in saving mode
+					// and only reading the data
+					Serialize_Element(const_cast<T&>(temp.front()), where);
+					temp.pop();
+				}
+			}
+		}
+
+		/*
 		 * A vector of bool holds its elements packed and hands out a proxy rather than an
 		 * element, so each one is unpacked into an ordinary variable for the trip and put
 		 * back afterwards. Assigning it back is harmless while saving.
@@ -288,6 +401,248 @@ class SaveStreamClass
 				bool element = value[(std::size_t)index];
 				Serialize(element);
 				value[(std::size_t)index] = element;
+			}
+		}
+
+		/*
+		 * A priority queue travels as its length followed by its elements. Since
+		 * std::priority_queue doesn't provide iteration without popping, we make
+		 * a copy for saving. Elements are written in priority order (top first).
+		 */
+		template<typename T, typename Container, typename Compare>
+		void Serialize(std::priority_queue<T, Container, Compare> & value, 
+					   std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+        
+				value = std::priority_queue<T, Container, Compare>();
+        
+				for (int index = 0; index < count; index++) {
+					T element{};
+					Serialize_Element(element, where);
+					value.push(element);
+				}
+			} else {
+				// Create a copy to iterate without modifying the original
+				std::priority_queue<T, Container, Compare> temp = value;
+        
+				while (!temp.empty()) {
+					// const_cast is safe here because we're in saving mode
+					// and only reading the data
+					Serialize_Element(const_cast<T&>(temp.top()), where);
+					temp.pop();
+				}
+			}
+		}
+
+		/*
+		 * An unordered set travels as its length followed by its elements.
+		 * For pointer types, we use a vector buffer to handle swizzling properly.
+		 */
+		template<typename T, typename Hash, typename KeyEqual, typename Alloc>
+		void Serialize(std::unordered_set<T, Hash, KeyEqual, Alloc> & value, 
+					   std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+
+				value.clear();
+				value.reserve(count);
+
+				for (int index = 0; index < count; index++) {
+					T element{};
+					Serialize_Element(element, where);
+					value.insert(std::move(element));
+				}
+			} else {
+				// For saving, iterate through the set
+				for (const auto& element : value) {
+					// const_cast is safe here because we're in saving mode
+					// and only reading the data
+					Serialize_Element(const_cast<T&>(element), where);
+				}
+			}
+		}
+
+		/*
+		 * A set travels as its length followed by its elements.
+		 * For pointer types, we use a vector buffer to handle swizzling properly.
+		 * Elements are serialized in their sorted order.
+		 */
+		template<typename T, typename Compare, typename Alloc>
+		void Serialize(std::set<T, Compare, Alloc> & value, 
+					   std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+
+				value.clear();
+				// For non-pointer types, insert directly
+				for (int index = 0; index < count; index++) {
+					T element{};
+					Serialize_Element(element, where);
+					value.insert(std::move(element));
+				}
+
+			} else {
+				// For saving, iterate through the set
+				for (const auto& element : value) {
+					// const_cast is safe here because we're in saving mode
+					// and only reading the data
+					Serialize_Element(const_cast<T&>(element), where);
+				}
+			}
+		}
+
+		/*
+		 * A list travels as its length followed by its elements.
+		 * Lists are sequential containers, so elements are serialized in order.
+		 * A negative count during loading is treated as 0 (for robustness).
+		 */
+		template<typename T, typename Alloc>
+		void Serialize(std::list<T, Alloc> & value, 
+					   std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					// Original code treats negative count as 0
+					count = 0;
+				}
+        
+				value.clear();
+        
+				// Reserve space if the allocator supports it
+				// Note: std::list doesn't have reserve, so this is a no-op for standard list
+				// But if you're using a custom allocator, it might be useful
+				if constexpr (requires { value.reserve(count); }) {
+					value.reserve(count);
+				}
+        
+				for (int index = 0; index < count; index++) {
+					T element{};
+					Serialize_Element(element, where);
+					value.push_back(std::move(element));
+				}
+			} else {
+				// For saving, iterate through the list
+				for (const auto& element : value) {
+					// const_cast is safe here because we're in saving mode
+					// and only reading the data
+					Serialize_Element(const_cast<T&>(element), where);
+				}
+			}
+		}
+
+		/*
+		 * A multimap travels as its length followed by its key-value pairs.
+		 * Since multimap allows duplicate keys, each pair is serialized individually.
+		 * Uses the existing pair serializer for each element.
+		 */
+		template<typename TKey, typename TValue, typename Compare, typename Alloc>
+		void Serialize(std::multimap<TKey, TValue, Compare, Alloc> & value, 
+					   std::source_location const & where = std::source_location::current())
+		{
+			int count = (int)value.size();
+			Serialize(count);
+
+			if (Is_Loading()) {
+				if (count < 0) {
+					Fail();
+					return;
+				}
+        
+				value.clear();
+        
+				for (int index = 0; index < count; index++) {
+					TKey key{};
+					TValue mapped{};
+            
+					// Serialize key and value separately
+					Serialize_Element(key, where);
+					Serialize_Element(mapped, where);
+            
+					// Emplace the pair into the multimap
+					value.emplace(std::move(key), std::move(mapped));
+				}
+			} else {
+				// For saving, iterate through the multimap
+				for (const auto& pair : value) {
+					// const_cast is safe here because we're in saving mode
+					// and only reading the data
+					Serialize_Element(const_cast<TKey&>(pair.first), where);
+					Serialize_Element(const_cast<TValue&>(pair.second), where);
+				}
+			}
+		}
+
+		/*
+		 * A tuple travels as its size followed by each of its elements in order.
+		 * The size is written as a size_t to match the tuple's size type.
+		 * Uses std::apply for clean iteration over tuple elements.
+		 */
+		template<typename... Types>
+		void Serialize(std::tuple<Types...> & value, 
+					   std::source_location const & where = std::source_location::current())
+		{
+			constexpr size_t expectedCount = sizeof...(Types);
+
+			if (Is_Loading()) {
+				// Read and validate tuple size
+				size_t storedCount = 0;
+				Serialize(storedCount);
+
+				if (Was_Error()) {
+					return;
+				}
+
+				if (storedCount != expectedCount) {
+					// Size mismatch - corrupted data or version incompatibility
+					Fail();
+					return;
+				}
+
+				// Read each element using std::apply
+				std::apply([&](auto&... elements) {
+					(Serialize_Element(elements, where), ...);
+				}, value);
+
+			} else {
+				// Write tuple size first
+				Serialize(expectedCount);
+
+				if (Was_Error()) {
+					return;
+				}
+
+				// Write each element using std::apply
+				// In saving mode, we cast away const (safe because we only read)
+				std::apply([&](auto&... elements) {
+					(Serialize_Element(
+						const_cast<std::remove_reference_t<decltype(elements)>&>(elements), 
+						where), ...);
+				}, value);
 			}
 		}
 

@@ -34,6 +34,7 @@
 
 #include "_house.h"
 #include "base.h"
+#include "housemask.h"
 #include "coord.h"
 #include "counter.h"
 #include "credits.h"
@@ -63,6 +64,8 @@
 #include "unit.hh"
 #include "urgency.hh"
 #include "zone.hh"
+
+#include <map>
 
 template<class T> class DynamicVectorClass;
 class TriggerClass;
@@ -111,8 +114,10 @@ class HouseStaticClass {
 		**	This is the original ally specification to use at scenario
 		**	start. Various forces during play may adjust the ally state
 		**	of this house.
+		**	EXTENSION: was `int` (32-house ceiling via `1 << HeapID`); now a
+		**	HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		*/
-		int Allies;
+		HouseBitArray Allies;
 
 		/*
 		**	This records the initial credits assigned to this house when the scenario
@@ -553,9 +558,18 @@ class HouseClass : public AbstractClass
 		**	For multiplayer games, each house needs to keep track of how many
 		**	objects of each other house they've killed.
 		*/
-		int UnitsKilled[20];
+		struct Killed{
+			int Unit;
+			int Building;
+
+			template<typename S>
+			void Serialize(S & stream) {
+				stream.Serialize(Unit);
+				stream.Serialize(Building);
+			}
+		};
+		std::map<HouseClass*, Killed> KilledTracker;
 		int UnitsLost;
-		int BuildingsKilled[20];
 		int BuildingsLost;
 
 		/*
@@ -605,8 +619,13 @@ class HouseClass : public AbstractClass
 		**	This value shows who is spying on this house's radar facilities.
 		**	This is used for the other side to be able to update their radar
 		**	map based on the cells that this house's units reveal.
+		**	EXTENSION: was `int`, indexed by the spying house's `Class->House` (the
+		**	static side, one of HOUSE_GOOD/HOUSE_BAD/HOUSE_NEUTRAL/HOUSE_MUTANT) via a
+		**	raw `1 << house` idiom. Now a HouseSideBitArray -- a distinct type from
+		**	HouseBitArray so this bit space (per side) can no longer be silently mixed
+		**	with the per-instance bit space (per HeapID) that Allies/CloakedBy/etc. use.
 		*/
-		int RadarSpied;
+		HouseSideBitArray RadarSpied;
 
 		/*
 		**	Running score, based on units destroyed and units lost.
@@ -1013,8 +1032,10 @@ class HouseClass : public AbstractClass
 		**	This is a bit field record of all the other houses that are allies with
 		**	this house. It is presumed that any house that isn't an ally, is therefore
 		**	an enemy. A house is always considered allied with itself.
+		**	EXTENSION: was `unsigned` (32-house ceiling via `1 << HeapID`); now a
+		**	HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		*/
-		unsigned Allies;
+		HouseBitArray Allies;
 
 		/*
 		**	General low-power related damaged is doled out whenever this timer

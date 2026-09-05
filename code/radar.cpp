@@ -816,10 +816,11 @@ void RadarClass::Draw_Names(void)
 		Fancy_Text_Print(txt, *SidebarSurface, SidebarSurface->Get_Rect(), Point2D(RadX + RadOffX, y), color, TBLACK, style);
 
 		kills = 0;
-		for (h = HOUSE_FIRST; h < ARRAY_SIZE(ptr->UnitsKilled); h++) {
-			kills += ptr->UnitsKilled[h];
-			kills += ptr->BuildingsKilled[h];
-		}
+		auto killed = ptr->KilledTracker[ptr];
+
+		kills += killed.Unit;
+		kills += killed.Building;
+
 		sprintf(txt, "%2d", kills);
 		Fancy_Text_Print(txt, *SidebarSurface, SidebarSurface->Get_Rect(), Point2D(RadX + RadOffX + RadIWidth - 2, y), color, TBLACK, TextPrintType(style | TPF_RIGHT));
 

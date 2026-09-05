@@ -1078,7 +1078,7 @@ void MapClass::Sight_From(Coord const & xcoord, int sightrange, HouseClass * hou
 
 	if (house != NULL && PlayerPtr != NULL) {
 		if (house != PlayerPtr) {
-			if ((house->RadarSpied & (1 << PlayerPtr->Class->House)) != 0) {
+			if (house->RadarSpied.Is_Set(PlayerPtr->Class->House)) {
 				house = PlayerPtr;
 			}
 		}
@@ -11776,11 +11776,10 @@ void MapClass::Deinit_Fog_System(void)
 /// <returns>bool; Is the area clear of this house and on the map?</returns>
 bool MapClass::Is_Area_Available(Rect const & rect, int house)
 {
-	int mask = 1 << house;
 	for (int x = rect.X; x < rect.X + rect.Width; x++) {
 		for (int y = rect.Y; y < rect.Y + rect.Height; y++) {
 			CellClass * cptr = &Map[Cell(x,y)];
-			if (cptr->OccupiedBy & mask) {
+			if (cptr->OccupiedBy.Is_Set(house)) {
 				return(false);
 			}
 		}

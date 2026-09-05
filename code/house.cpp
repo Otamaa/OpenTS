@@ -318,7 +318,7 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 	LATime(0),
 	LAEnemy(HOUSE_NONE),
 	ToCapture(NULL),
-	RadarSpied(0),
+	RadarSpied(),
 	PointTotal(0),
 	PreferredTarget(QUARRY_ANYTHING),
 	Attack(),
@@ -341,7 +341,7 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 	RecalcRadar(true),
 	EMPDest(0,0),
 	NukeDest(0,0),
-	Allies(0),
+	Allies(),
 	DamageTime(TICKS_PER_MINUTE * Rule->DamageDelay),
 	TeamTime(1),
 	TriggerTime(0),
@@ -400,12 +400,11 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 		SuperWeapon.Add(new SuperClass(SuperWeaponTypes[index], this));
 	}
 
-	memset(UnitsKilled, 0, sizeof(UnitsKilled));
-	memset(BuildingsKilled, 0, sizeof(BuildingsKilled));
+	KilledTracker.clear();
 	IniName = Fetch_String(TXT_COMPUTER);	// Default computer name.
 	memset((void *)&Regions[0], 0x00, sizeof(Regions));
-	//Allies |= (1L << HeapID);
-	Control.Allies |= (1L << HeapID);
+	//Allies.Set(HeapID);
+	Control.Allies.Set(HeapID);
 
 	/*
 	**	Set the time of the first AI attack.
@@ -759,7 +758,9 @@ void HouseClass::Debug_Dump(MonoClass * mono) const
 	mono->Set_Cursor(21, 3);mono->Printf("%3d", CurAircraft);
 	mono->Set_Cursor(27, 3);mono->Printf("%8d", Credits);
 	mono->Set_Cursor(37, 3);mono->Printf("%5d", Power);
-	mono->Set_Cursor(45, 3);mono->Printf("%04X", RadarSpied);
+	char radarspied_hex[HouseSideBitArray::Significant_Hex_Digits() + 1];
+	RadarSpied.Format_Hex_Compact(radarspied_hex, sizeof(radarspied_hex));
+	mono->Set_Cursor(45, 3);mono->Printf("%s", radarspied_hex);
 	mono->Set_Cursor(52, 3);mono->Printf("%5d", PointTotal);
 	mono->Set_Cursor(62, 3);mono->Printf("%5d", (int)TeamTime);
 	mono->Set_Cursor(71, 3);mono->Printf("%5d", (int)AlertTime);
@@ -776,7 +777,9 @@ void HouseClass::Debug_Dump(MonoClass * mono) const
 	mono->Set_Cursor(21, 7);mono->Printf("%3d", CurUnits);
 	mono->Set_Cursor(27, 7);mono->Printf("%8d", Control.InitialCredits);
 	mono->Set_Cursor(38, 7);mono->Printf("%5d", UnitsLost);
-	mono->Set_Cursor(44, 7);mono->Printf("%08X", Allies);
+	char allies_hex[HouseBitArray::Hex_Digits() + 1];
+	Allies.Format_Hex(allies_hex, sizeof(allies_hex));
+	mono->Set_Cursor(44, 7);mono->Printf("%s", allies_hex);
 	mono->Set_Cursor(71, 7);mono->Printf("%5d", (int)Attack.Timer);
 
 	mono->Set_Cursor(10, 9);mono->Printf("%8.8s", (BuildInfantry == INFANTRY_NONE) ? " " : InfantryTypes[BuildInfantry]->Graphic_Name());
@@ -853,7 +856,7 @@ void HouseClass::Debug_Dump(MonoClass * mono) const
 HouseStaticClass::HouseStaticClass(void) :
 	IQ(0),
 	TechLevel(1),
-	Allies(0),
+	Allies(),
 	InitialCredits(0),
 	Edge(SOURCE_NORTH)
 {
@@ -2009,7 +2012,7 @@ bool HouseClass::Is_Ally(HousesType house) const
 {
 	if (house == HeapID) return(true);
 	if (house != HOUSE_NONE) {
-		return(((1<<house) & Allies) != 0);
+		return(Allies.Is_Set(house));
 	}
 	return(false);
 }
@@ -2126,7 +2129,7 @@ void HouseClass::Make_Ally(HouseClass * house)
 {
 	if (Is_Allowed_To_Ally(house)) {
 
-		Allies |= (1L << house->HeapID);
+		Allies.Set(house->HeapID);
 
 		Recalc_Threat_Regions();
 		Clear_Anger(house);
@@ -2139,7 +2142,7 @@ void HouseClass::Make_Ally(HouseClass * house)
 		}
 
 		if (ScenarioInit) {
-			Control.Allies |= (1L << house->HeapID);
+			Control.Allies.Set(house->HeapID);
 		}
 
 		if (!ScenarioInit) {
@@ -2235,10 +2238,10 @@ void HouseClass::Make_Enemy(HouseClass * house)
 		Add_Anger(1, house);
 
 		if (house != NULL && Is_Ally(house)) {
-			Allies &= ~(1L << house->HeapID);
+			Allies.Clear(house->HeapID);
 
 			if (ScenarioInit) {
-				Control.Allies &= ~(1L << house->HeapID);
+				Control.Allies.Clear(house->HeapID);
 			}
 
 			Recalc_Threat_Regions();
@@ -2247,10 +2250,10 @@ void HouseClass::Make_Enemy(HouseClass * house)
 			**	Breaking an alliance is a bilateral event.
 			*/
 			if (house->Is_Ally(this)) {
-				house->Allies &= ~(1L << HeapID);
+				house->Allies.Clear(HeapID);
 
 				if (ScenarioInit) {
-					house->Control.Allies &= ~(1L << HeapID);
+					house->Control.Allies.Clear(HeapID);
 				}
 				house->Recalc_Threat_Regions();
 				house->Add_Anger(1, house);
@@ -5544,7 +5547,20 @@ void HouseClass::Read_INI(CCINIClass const & ini)
 	Control.Edge = ini.Get_SourceType(hname, "Edge", SOURCE_NORTH);
 	IsPlayerControl = ini.Get_Bool(hname, "PlayerControl", false);
 
-	int owners = ini.Get_Owners(hname, "Allies", Allies);
+	// BUGFIX: Get_Owners()/Owner_From_Name() only ever produce a bit per house *side*
+	// (Class->House, 0..HOUSE_COUNT-1), not per house instance, so the per-instance
+	// Allies mask can no longer be handed to Get_Owners() directly as its default value
+	// -- the two bit spaces don't line up once a house count beyond HOUSE_COUNT is in
+	// play. Build the equivalent side-mask instead: the same "which sides is this house
+	// currently allied with" reduction that Write_INI() already performs when saving
+	// this same key back out.
+	int default_owners = 0;
+	for (HousesType h = HOUSE_FIRST; h < Houses.Count(); h++) {
+		if (Allies.Is_Set(Houses[h]->HeapID)) {
+			default_owners |= (1 << Houses[h]->Class->House);
+		}
+	}
+	int owners = ini.Get_Owners(hname, "Allies", default_owners);
 	Make_Ally(Houses[HeapID]);
 
 	Scheme = ini.Get_Scheme_Index(hname, "Color", Scheme);
@@ -5621,7 +5637,7 @@ void HouseClass::Write_INI(CCINIClass & ini)
 
 	unsigned allies = 0;
 	for (HousesType index = HOUSE_FIRST; index < Houses.Count(); index++) {
-		if ((Control.Allies & (1 << Houses[index]->HeapID)) != 0) {
+		if (Control.Allies.Is_Set(Houses[index]->HeapID)) {
 			allies |= (1 << Houses[index]->Class->House);
 		}
 	}
@@ -5887,7 +5903,7 @@ void HouseClass::Update_Spied_Power_Plants(void)
 			if (tech && tech->RTTI==RTTI_BUILDING) {
 				BuildingClass *bldg = (BuildingClass *)tech;
 				if (!bldg->IsOwnedByPlayer && bldg->Class->Power > 0) {
-					if ( bldg->SpiedBy & (1<<(PlayerPtr->Class->House)) ) {
+					if (bldg->SpiedBy.Is_Set(PlayerPtr->Class->House)) {
 						bldg->Mark(MARK_CHANGE);
 					}
 				}
@@ -6399,7 +6415,7 @@ void HouseClass::Compute_CRC(CRCEngine & crc) const
 	crc(Drain);
 	crc(WhoLastHurtMe);
 	crc(Enemy);
-	crc((int)Allies);
+	Allies.Add_To_CRC(crc);
 	Base.Compute_CRC(crc);
 }
 
@@ -6524,9 +6540,8 @@ void HouseClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(BuildingFactory);
 	stream.Serialize(FlagLocation);
 	stream.Serialize(FlagHome);
-	stream.Serialize(UnitsKilled);
+	stream.Serialize(KilledTracker);
 	stream.Serialize(UnitsLost);
-	stream.Serialize(BuildingsKilled);
 	stream.Serialize(BuildingsLost);
 	stream.Serialize(WhoLastHurtMe);
 	stream.Serialize(Center);
@@ -7197,7 +7212,7 @@ Cell HouseClass::Where_To_Place_Building(BuildingTypeClass *buildingtype, int (*
 
 	/// Height at base placement center.
 	int base_height = Map[Base.PlacementCenter].Height;
-	int house_mask  = 1 << HeapID;
+	int house_mask  = HeapID;
 
 	/// Declared out here deliberately -- scoped to the loop, MSVC6 pools its frame slot with
 	/// the cloak generator distance temporary and the whole slot map shifts.
@@ -7211,7 +7226,7 @@ Cell HouseClass::Where_To_Place_Building(BuildingTypeClass *buildingtype, int (*
 			/// Sum the directions of the neighbors this house already occupies.
 			for (int face = 0; face < FACING_COUNT; face++) {
 				CellClass *cptr = &Map[Adjacent_Cell(base_cell, (FacingType)face)];
-				if (cptr->OccupiedBy & house_mask) {
+				if (cptr->OccupiedBy.Is_Set(house_mask)) {
 					occupied_dir = Adjacent_Cell(occupied_dir, (FacingType)face);
 				}
 			}
@@ -8121,7 +8136,7 @@ void HouseClass::Update_Factories(RTTIType rtti)
 /// <param name="house">The house that performed the spying.</param>
 void HouseClass::Update_Spied_Radar(HouseClass * house)
 {
-	RadarSpied |= 1 << house->Class->House;
+	RadarSpied.Set(house->Class->House);
 	if (house == PlayerPtr) {
 		for (int index = 0; index < Technos.Count(); index++) {
 			TechnoClass * obj = Technos[index];
@@ -9058,11 +9073,11 @@ bool HouseClass::Can_Build_Here(BuildingTypeClass *building, Cell const & cell)
 	int width = (2 * spacing) + building->Width();
 	int height = (2 * spacing) + building->Height();
 
-	int mask = 1 << HeapID;
+	int mask = HeapID;
 
 	for (int x = cell.X - spacing - 1; x < cell.X + width + 1; x++) {
 		for (int y = cell.Y - spacing - 1; y < cell.Y + height + 1; y++) {
-			if (Map[Cell(x, y)].OccupiedBy & mask) {
+			if (Map[Cell(x, y)].OccupiedBy.Is_Set(mask)) {
 				return(true);
 			}
 		}

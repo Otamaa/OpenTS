@@ -252,7 +252,7 @@ TechnoClass::TechnoClass(HouseClass * house) :
 	ArmorBias(1),
 	FirepowerBias(1),
 	IdleTimer(0),
-	SpiedBy(0),
+	SpiedBy(),
 	ArchivedTarget(NULL),
 	House(house),
 	Cloak(UNCLOAKED),
@@ -301,7 +301,7 @@ TechnoClass::TechnoClass(HouseClass * house) :
 	IsOnWaypointPatrol(false),
 	NearbyObject(NULL),
 	StunDuration(0),
-	LimpetType(0)
+	LimpetType()
 {
 	if (house != NULL) {
 		ActLike = house->ActLike;
@@ -1035,7 +1035,7 @@ RadioMessageType TechnoClass::Receive_Message(RadioClass * from, RadioMessageTyp
 		**	Handle repair of this unit.
 		*/
 		case RADIO_REPAIR:
-			LimpetType = 0;
+			LimpetType.Clear_All();
 			LimpetSpeedFactor = 0;
 
 			PrimaryFacing.Set_ROT(TClass->ROT);
@@ -1198,7 +1198,7 @@ void TechnoClass::Draw_Post_Render(Point2D const & point, Rect const & cliprect)
 		}
 	}
 
-	bool allied = House->Shares_View_With(PlayerPtr) || (SpiedBy & (1<<(PlayerPtr->Class->House)));
+	bool allied = House->Shares_View_With(PlayerPtr) || SpiedBy.Is_Set(PlayerPtr->Class->House);
 
 	if (IsSelected || sensed_underground) {
 
@@ -1206,7 +1206,7 @@ void TechnoClass::Draw_Post_Render(Point2D const & point, Rect const & cliprect)
 		if (RTTI == RTTI_BUILDING || (unit != NULL && unit->Class->IsCoreDefender)) {
 
 			int color = WHITE;
-			if (LimpetType > 0) {
+			if (LimpetType) {
 				color = YELLOW;
 			}
 			if (HeightAGL < -4) {
@@ -1332,7 +1332,7 @@ void TechnoClass::Draw_Pre_Render(Point2D const & point, Rect const & cliprect) 
 {
 	if (RTTI == RTTI_BUILDING && IsSelected && RTTI != RTTI_INFANTRY) {
 		int color = WHITE;
-		if (LimpetType > 0) {
+		if (LimpetType) {
 			color = YELLOW;
 		}
 		if (HeightAGL < -4) {
@@ -1511,7 +1511,7 @@ void TechnoClass::Draw_Health_Bar(Point2D const & xpoint, Rect const & cliprect)
 			health_bar_count = 8;
 		} else {
 			if (IsSelected) {
-				Draw_Shape(*LogicalSurface, *NormalDrawer, (ShapeSet const *)ObjectTypeClass::SelectShapes, (LimpetType != 0 ? 8 : 0) + (powerup ? 4 : 0) + 3, xpoint, cliprect, ShapeFlags_Type(SHAPE_ALPHA|SHAPE_WIN_REL|SHAPE_CENTER));
+				Draw_Shape(*LogicalSurface, *NormalDrawer, (ShapeSet const *)ObjectTypeClass::SelectShapes, (LimpetType ? 8 : 0) + (powerup ? 4 : 0) + 3, xpoint, cliprect, ShapeFlags_Type(SHAPE_ALPHA|SHAPE_WIN_REL|SHAPE_CENTER));
 			}
 			offset = Point2D(-15, -25);
 			health_bar_count = 17;
@@ -1659,7 +1659,7 @@ void TechnoClass::Draw_It(int x, int y, int /*WindowNumberType*/ window) const
 			// Lower left corner.
 			draw_window.Draw_Line(x-lx, y+ly, x-lx+dx, y+ly, WHITE);
 			draw_window.Draw_Line(x-lx, y+ly, x-lx, y+ly-dy, WHITE);
-			if (House->Is_Ally(PlayerPtr) || (SpiedBy & (1<<(PlayerPtr->Class->House)))) {
+			if (House->Is_Ally(PlayerPtr) || SpiedBy.Is_Set(PlayerPtr->Class->House)) {
 				Draw_Pips((x-lx)+5, y+ly-3, window);
 			}
 		}
@@ -3868,8 +3868,8 @@ BulletClass * TechnoClass::Fire_At(AbstractClass * target, int which)
 
 	if (weapon->WarheadPtr != NULL && weapon->WarheadPtr->LimpetFactor > 0 && target->Is_Techno() == true) {
 		TechnoClass * techno = (TechnoClass *)target;
-		if ((techno->LimpetType & 1 << House->HeapID) == 0) {
-			techno->LimpetType |= 1 << House->HeapID;
+		if (!techno->LimpetType.Is_Set(House->HeapID)) {
+			techno->LimpetType.Set(House->HeapID);
 			techno->LimpetSpeedFactor = (double)(100 - weapon->WarheadPtr->LimpetFactor) / 100.0;
 			PrimaryFacing.Set_ROT((int)((double)TClass->ROT * techno->LimpetSpeedFactor));
 			SecondaryFacing.Set_ROT((int)((double)TClass->ROT * techno->LimpetSpeedFactor));
@@ -4807,13 +4807,13 @@ bool TechnoClass::Captured(HouseClass * newowner)
 		newowner->Tracking_Add(this);
 		switch ((RTTIType)RTTI) {
 			case RTTI_BUILDING:
-				newowner->BuildingsKilled[Owner()]++;
+				newowner->KilledTracker[House].Building++;
 				break;
 
 			case RTTI_AIRCRAFT:
 			case RTTI_INFANTRY:
 			case RTTI_UNIT:
-				newowner->UnitsKilled[Owner()]++;
+				newowner->KilledTracker[House].Unit++;
 				break;
 
 			default:
@@ -4930,7 +4930,7 @@ ResultType TechnoClass::Take_Damage(int & damage, int distance, WarheadTypeClass
 	 * normal rate of turn for the turret and body.
 	 */
 	if (negative == true) {
-		LimpetType = 0;
+		LimpetType.Clear_All();
 		LimpetSpeedFactor = 0.0;
 		PrimaryFacing.Set_ROT(TClass->ROT);
 		SecondaryFacing.Set_ROT(TClass->ROT);
@@ -5287,7 +5287,7 @@ void TechnoClass::Record_The_Kill(TechnoClass * source)
 						if (Session.Type == GAME_INTERNET) {
 							source->House->DestroyedBuildings->Increment_Unit_Total(((BuildingClass*)this)->Class->HeapID);
 						}
-						source->House->BuildingsKilled[Owner()]++;
+						source->House->KilledTracker[House].Building++;
 					}
 
 					/*
@@ -5321,7 +5321,7 @@ void TechnoClass::Record_The_Kill(TechnoClass * source)
 
 
 			House->UnitsLost++;
-			if (source != NULL) source->House->UnitsKilled[Owner()]++;
+			if (source != NULL) source->House->KilledTracker[House].Unit++;
 
 			/*
 			**	If the map is displaying the multiplayer player names & their
@@ -7917,7 +7917,7 @@ void TechnoClass::Look(bool incremental, bool dontmap)
 
 		if (sight_range) {
 			HouseClass * house = House;
-			if (((1 << PlayerPtr->HeapID) & LimpetType) != 0) {
+			if (LimpetType.Is_Set(PlayerPtr->HeapID)) {
 				house = PlayerPtr;
 			}
 			Map.Sight_From(PositionCoord, sight_range, house, incremental, dontmap);
@@ -8251,7 +8251,7 @@ void TechnoClass::Compute_CRC(CRCEngine & crc) const
 	crc(ArmorBias);
 	crc(FirepowerBias);
 	crc((int)IdleTimer);
-	crc((int)SpiedBy);
+	SpiedBy.Add_To_CRC(crc);
 	crc(Cloak);
 	crc((int)CloakDelay);
 	crc(PredatorOffset);
@@ -8287,7 +8287,7 @@ void TechnoClass::Compute_CRC(CRCEngine & crc) const
 	crc(UnusedCooldown);
 	crc(Unused1);
 	crc(SightIncrease);
-	crc((int)LimpetType);
+	LimpetType.Add_To_CRC(crc);
 }
 
 

@@ -433,12 +433,10 @@ void MultiScore::Tally_Score(void)
 		int remain = 0;
 		int total = 0;
 
-		for (i = 0; i < ARRAY_SIZE(hptr->UnitsKilled); i++) {
-			kills += hptr->UnitsKilled[i];
-		}
-		for (i = 0; i < ARRAY_SIZE(hptr->BuildingsKilled); i++) {
-			kills += hptr->BuildingsKilled[i];
-		}
+		auto killed = hptr->KilledTracker[hptr];
+
+		kills += killed.Unit;
+		kills += killed.Building;
 		Session.Score[score_index].Kills[0] = kills;
 
 		losses += hptr->UnitsLost;

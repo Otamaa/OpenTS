@@ -40,6 +40,7 @@
 #include "ftimer.h"
 #include "globals.h"
 #include "house.h"
+#include "housemask.h"
 #include "matrix3d.h"
 #include "point.h"
 #include "radio.h"
@@ -122,8 +123,12 @@ class TechnoClass :	public RadioClass,
 		/*
 		**	This is a list of bits of which houses are spying on this building,
 		**	if in fact this is a building.
+		**	EXTENSION: was `unsigned`, indexed by the spying house's `Class->House`
+		**	(the static side) via a raw `1 << house` idiom. Now a HouseSideBitArray --
+		**	a distinct type from HouseBitArray so this bit space (per side) can no
+		**	longer be silently mixed with the per-instance bit space (per HeapID).
 		*/
-		unsigned SpiedBy;
+		HouseSideBitArray SpiedBy;
 
 		/*
 		**	If this object is part of a pseudo-team that the player is managing, then
@@ -469,8 +474,10 @@ class TechnoClass :	public RadioClass,
 		 * This is a list of bits of which houses have attached a "limpet" drone to this
 		 * object. A house that has limpeted an object sees whatever that object sees, so the
 		 * drone serves as a spy that travels along with its victim.
+		 * EXTENSION: was `unsigned` (32-house ceiling via `1 << HeapID`); now a
+		 * HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		 */
-		unsigned LimpetType;
+		HouseBitArray LimpetType;
 
 		/*
 		 * This is the speed penalty imposed by an attached limpet drone, expressed as a
