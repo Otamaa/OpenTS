@@ -466,8 +466,8 @@ class HouseClass : public AbstractClass
 		**	Record of gains and losses for this house during the course of the
 		**	scenario.
 		*/
-		unsigned CreditsSpent;
-		unsigned HarvestedCredits;
+		int CreditsSpent;
+		int HarvestedCredits;
 		int StolenBuildingsCredits;
 
 		/*
@@ -568,7 +568,7 @@ class HouseClass : public AbstractClass
 				stream.Serialize(Building);
 			}
 		};
-		std::map<HouseClass*, Killed> KilledTracker;
+		std::map<HousesType, Killed> KilledTracker;
 		int UnitsLost;
 		int BuildingsLost;
 

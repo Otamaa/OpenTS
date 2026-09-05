@@ -433,7 +433,7 @@ void MultiScore::Tally_Score(void)
 		int remain = 0;
 		int total = 0;
 
-		auto killed = hptr->KilledTracker[hptr];
+		auto killed = hptr->KilledTracker[house];
 
 		kills += killed.Unit;
 		kills += killed.Building;

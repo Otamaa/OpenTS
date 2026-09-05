@@ -309,6 +309,7 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 	BuildingFactory(NULL),
 	FlagLocation(NULL),
 	FlagHome(0,0),
+	KilledTracker(),
 	UnitsLost(0),
 	BuildingsLost(0),
 	WhoLastHurtMe(HOUSE_NONE),
@@ -400,7 +401,6 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 		SuperWeapon.Add(new SuperClass(SuperWeaponTypes[index], this));
 	}
 
-	KilledTracker.clear();
 	IniName = Fetch_String(TXT_COMPUTER);	// Default computer name.
 	memset((void *)&Regions[0], 0x00, sizeof(Regions));
 	//Allies.Set(HeapID);

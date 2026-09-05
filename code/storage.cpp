@@ -19,11 +19,9 @@
 /// Creates an empty storage object.
 /// Every tiberium slot starts out holding nothing.
 /// </summary>
-StorageClass::StorageClass(void)
+StorageClass::StorageClass(int ArraySize)
 {
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
-		Values[i] = 0;
-	}
+	Values.resize(ArraySize);
 }
 
 
@@ -37,7 +35,7 @@ StorageClass::StorageClass(void)
 int StorageClass::Get_Total_Value(void) const
 {
 	int value = 0;
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		if (Values[i] > 0) {
 			value += Values[i] * Tiberiums[i]->CreditValue;
 		}
@@ -57,7 +55,7 @@ int StorageClass::Get_Total_Value(void) const
 int StorageClass::Get_Total_Amount(void) const
 {
 	int amount = 0;
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		amount += Values[i];
 	}
 
@@ -119,7 +117,7 @@ StorageClass StorageClass::operator+(StorageClass &that) const
 {
 	StorageClass tmp;
 
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		tmp.Values[i] = Values[i] + that.Values[i];
 	}
 
@@ -134,7 +132,7 @@ StorageClass StorageClass::operator+(StorageClass &that) const
 /// <returns>Returns with a copy of this storage object as it stands after the addition.</returns>
 StorageClass StorageClass::operator+=(StorageClass &that)
 {
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		Values[i] += that.Values[i];
 	}
 
@@ -152,7 +150,7 @@ StorageClass StorageClass::operator-(StorageClass &that) const
 {
 	StorageClass tmp;
 
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		tmp.Values[i] = Values[i] - that.Values[i];
 	}
 
@@ -168,7 +166,7 @@ StorageClass StorageClass::operator-(StorageClass &that) const
 /// subtraction.</returns>
 StorageClass StorageClass::operator-=(StorageClass &that)
 {
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		Values[i] -= that.Values[i];
 	}
 
@@ -185,7 +183,7 @@ StorageClass StorageClass::operator-=(StorageClass &that)
 /// is empty.</returns>
 int StorageClass::First_Used_Slot(void) const
 {
-	for (int i = 0; i < ARRAY_SIZE(Values); i++) {
+	for (int i = 0; i < (int)Values.size(); i++) {
 		if (Values[i] > 0) {
 			return(i);
 		}

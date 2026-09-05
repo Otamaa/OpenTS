@@ -9,12 +9,13 @@
 
 #pragma once
 
+#include <vector>
 
 class StorageClass
 {
 	public:
-		StorageClass(void);
-		~StorageClass(void) {};
+		StorageClass(int ArraySize = 4);
+		~StorageClass(void) = default;
 
 		int Get_Total_Value(void) const;
 		int Get_Total_Amount(void) const;
@@ -40,5 +41,5 @@ class StorageClass
 		 * This is the amount held of each tiberium type, one slot per Tiberiums heap entry.
 		 * Keeping them apart is what lets a refinery pay the right value for a mixed load.
 		 */
-		int Values[4];
+		std::vector<int> Values;
 };

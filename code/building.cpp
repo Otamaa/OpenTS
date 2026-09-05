@@ -237,7 +237,7 @@ BuildingClass::BuildingClass(BuildingTypeClass const * type, HouseClass * house)
 	CountDown(0),
 	BState(BSTATE_NONE),
 	QueueBState(BSTATE_NONE),
-	WhoLastHurtMe(HOUSE_FIRST),
+	WhoLastHurtMe(HOUSE_NONE),
 	WhomToRepay(NULL),
 	AnimToTrack(NULL),
 	LastStrength(0),

@@ -4807,13 +4807,13 @@ bool TechnoClass::Captured(HouseClass * newowner)
 		newowner->Tracking_Add(this);
 		switch ((RTTIType)RTTI) {
 			case RTTI_BUILDING:
-				newowner->KilledTracker[House].Building++;
+				newowner->KilledTracker[Owner()].Building++;
 				break;
 
 			case RTTI_AIRCRAFT:
 			case RTTI_INFANTRY:
 			case RTTI_UNIT:
-				newowner->KilledTracker[House].Unit++;
+				newowner->KilledTracker[Owner()].Unit++;
 				break;
 
 			default:
@@ -5287,7 +5287,7 @@ void TechnoClass::Record_The_Kill(TechnoClass * source)
 						if (Session.Type == GAME_INTERNET) {
 							source->House->DestroyedBuildings->Increment_Unit_Total(((BuildingClass*)this)->Class->HeapID);
 						}
-						source->House->KilledTracker[House].Building++;
+						source->House->KilledTracker[Owner()].Building++;
 					}
 
 					/*
@@ -5321,7 +5321,7 @@ void TechnoClass::Record_The_Kill(TechnoClass * source)
 
 
 			House->UnitsLost++;
-			if (source != NULL) source->House->KilledTracker[House].Unit++;
+			if (source != NULL) source->House->KilledTracker[Owner()].Unit++;
 
 			/*
 			**	If the map is displaying the multiplayer player names & their

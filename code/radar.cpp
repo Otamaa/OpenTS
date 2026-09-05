@@ -816,7 +816,7 @@ void RadarClass::Draw_Names(void)
 		Fancy_Text_Print(txt, *SidebarSurface, SidebarSurface->Get_Rect(), Point2D(RadX + RadOffX, y), color, TBLACK, style);
 
 		kills = 0;
-		auto killed = ptr->KilledTracker[ptr];
+		auto killed = ptr->KilledTracker[house];
 
 		kills += killed.Unit;
 		kills += killed.Building;
