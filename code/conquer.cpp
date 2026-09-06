@@ -1294,7 +1294,7 @@ int Owner_From_Name(char const * text)
 	int ownable = 0;
 	HousesType h = HouseTypeClass::From_Name(text);
 	if (h != HOUSE_NONE) {
-		ownable |= (1 << h);
+		return (int(ShiftToTheRightOne(h)));
 	}
 	return(ownable);
 }

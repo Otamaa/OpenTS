@@ -1009,18 +1009,18 @@ bool CCINIClass::Put_RTTIType(char const * section, char const * entry, RTTIType
  * HISTORY:                                                                                    *
  *   07/03/1996 JLB : Created.                                                                 *
  *=============================================================================================*/
-int CCINIClass::Get_Owners(char const * section, char const * entry, int defvalue) const
+std::set<HousesType> CCINIClass::Get_Owners(char const * section, char const * entry, const std::set<HousesType>& defvalue) const
 {
-	int ownable = defvalue;
+	std::set<HousesType> ownable = defvalue;
 
 	std::string value = Get_String(section, entry);
 	if (!value.empty()) {
 
-		ownable = 0;
+		ownable.clear();
 		char * name = strtok(value.data(), ",");
 
 		while (name) {
-			ownable |= Owner_From_Name(name);
+			ownable.insert((HousesType)Owner_From_Name(name));
 			name = strtok(NULL, ",");
 		}
 	}
@@ -1048,19 +1048,19 @@ int CCINIClass::Get_Owners(char const * section, char const * entry, int defvalu
  * HISTORY:                                                                                    *
  *   07/03/1996 JLB : Created.                                                                 *
  *=============================================================================================*/
-bool CCINIClass::Put_Owners(char const * section, char const * entry, int value)
+bool CCINIClass::Put_Owners(char const * section, char const * entry, const std::set<HousesType>& value)
 {
 	char buffer[128];
 
 	buffer[0] = '\0';
 
-	if (value == 0) {
+	if (value.empty()) {
 		return(true);
 	}
 
 	for (HousesType house = HOUSE_FIRST; house < HouseTypes.Count(); house++) {
 		HouseTypeClass * type = HouseTypes[house];
-		if ((value & (1 << type->House)) != 0) {
+		if (value.contains(ShiftToTheRightOne(type->House))) {
 			if (buffer[0] != '\0') {
 				strcat(buffer, ",");
 			}

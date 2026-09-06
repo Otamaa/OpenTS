@@ -459,12 +459,12 @@ void Dropship_Screen(void)
 	DynamicVectorClass<TechnoTypeClass *> candidates;
 	int type_count = InfantryTypes.Count() + UnitTypes.Count();
 
-	unsigned int ownable_mask = 1 << HouseTypes.ID(PlayerPtr->Class);
+	HousesType ownable_mask = ShiftToTheRightOne((HousesType)HouseTypes.ID(PlayerPtr->Class));
 
 	if (Scen->AllowableUnits.Count() > 0) {
 		for (i = 0; i < Scen->AllowableUnits.Count(); ++i) {
 			TechnoTypeClass *techtype = Scen->AllowableUnits[i];
-			if ((techtype->Ownable & ownable_mask) && Scen->AllowableUnitMaximums[i] != 0) {
+			if (techtype->Ownable.contains(ownable_mask) && Scen->AllowableUnitMaximums[i] != 0) {
 				candidates.Add(techtype);
 			}
 		}
@@ -489,7 +489,7 @@ void Dropship_Screen(void)
 			if (techtype->Raw_Cost() <= _minimum_cost) {
 				continue;
 			}
-			if ((techtype->Ownable & ownable_mask) == 0) {
+			if (!techtype->Ownable.contains(ownable_mask)) {
 				continue;
 			}
 

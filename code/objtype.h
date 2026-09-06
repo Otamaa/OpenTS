@@ -20,6 +20,9 @@
 
 #include "armor.hh"
 #include "voc.hh"
+#include "house.hh"
+
+#include <set>
 
 template<class T> class DynamicVectorClass;
 
@@ -199,7 +202,7 @@ class ObjectTypeClass : public AbstractTypeClass
 
 		virtual bool Read_INI(CCINIClass const & ini) override;
 		virtual Coord const Coord_Fixup(Coord const & coord) const {return(coord);};
-		virtual int Get_Ownable(void) const {return(-1);};
+		virtual std::set<HousesType> Get_Ownable(void) const {return {};};
 		virtual int Max_Pips(void) const;
 		virtual Point3D Pixel_Dimensions(void) const;
 		virtual Point3D Lepton_Dimensions(void) const;

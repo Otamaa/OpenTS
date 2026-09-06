@@ -2649,12 +2649,12 @@ static void Create_Units(bool official)
 
 		DynamicVectorClass<UnitTypeClass*> units;
 		DynamicVectorClass<InfantryTypeClass*> infantry;
-		unsigned int mask = 1 << hptr->Class->HeapID;
+		HousesType mask = ShiftToTheRightOne(hptr->Class->HeapID);
 
 		for (int unit = 0; unit < UnitTypes.Count(); unit++) {
 			UnitTypeClass * utype = UnitTypes[unit];
 			if (utype->IsAllowedToStartInMultiplayer) {
-				if (utype->Level <= hptr->Control.TechLevel && (utype->Ownable & mask)) {
+				if (utype->Level <= hptr->Control.TechLevel && (utype->Ownable.contains(mask))) {
 					if (utype->Fetch_ID() != Rule->BaseUnit->Fetch_ID()) {
 						units.Add(utype);
 					}
@@ -2665,7 +2665,7 @@ static void Create_Units(bool official)
 		for (int inf = 0; inf < InfantryTypes.Count(); inf++) {
 			InfantryTypeClass * itype = InfantryTypes[inf];
 			if (itype->IsAllowedToStartInMultiplayer) {
-				if (itype->Level <= hptr->Control.TechLevel && (itype->Ownable & mask)) {
+				if (itype->Level <= hptr->Control.TechLevel && (itype->Ownable.contains(mask))) {
 					infantry.Add(itype);
 				}
 			}

@@ -46,6 +46,8 @@
 #include "smudge.hh"
 #include "tiberium.hh"
 
+#include <set>
+
 class FoggedObjectClass;
 class LightConvertClass;
 class TagClass;
@@ -175,9 +177,9 @@ class CellClass : public AbstractClass
 		 * EXTENSION: were `unsigned` (32-house ceiling via `1 << house`); now
 		 * HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		 */
-		HouseBitArray CloakedBy;
-		HouseBitArray SensedBy;
-		HouseBitArray OccupiedBy;
+		std::set<HousesType> CloakedBy;
+		std::set<HousesType> SensedBy;
+		std::set<HousesType> OccupiedBy;
 
 	private:
 

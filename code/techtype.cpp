@@ -99,7 +99,7 @@ TechnoTypeClass::TechnoTypeClass(char const * ininame, SpeedType speed) :
 	MaxSpeed(MPH_IMMOBILE),
 	Speed(speed),
 	MaxAmmo(-1),
-	Ownable(0),
+	Ownable(),
 	CameoData(NULL),
 	Rotation(0),
 	ROT(0),
@@ -257,10 +257,10 @@ int TechnoTypeClass::Raw_Cost(void) const
  * HISTORY:                                                                                    *
  *   07/29/1995 JLB : Created.                                                                 *
  *=============================================================================================*/
-int TechnoTypeClass::Get_Ownable(void) const
+std::set<HousesType> TechnoTypeClass::Get_Ownable(void) const
 {
 	if (IsDoubleOwned && Session.Type != GAME_NORMAL) {
-		return(0x7FFFFFFF);
+		return {};
 	}
 	return(Ownable);
 }
@@ -1040,7 +1040,9 @@ void TechnoTypeClass::Compute_CRC(class CRCEngine & crc) const
 	crc(MaxSpeed);
 	crc(Speed);
 	crc(MaxAmmo);
-	crc((int)Ownable);
+	for (const auto& owner : Ownable) {
+		crc((int)owner);
+	}
 	crc(Rotation);
 	crc(ROT);
 	crc(TurretOffset);

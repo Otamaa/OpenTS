@@ -117,7 +117,7 @@ class HouseStaticClass {
 		**	EXTENSION: was `int` (32-house ceiling via `1 << HeapID`); now a
 		**	HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		*/
-		HouseBitArray Allies;
+		std::set<HousesType> Allies;
 
 		/*
 		**	This records the initial credits assigned to this house when the scenario
@@ -625,7 +625,7 @@ class HouseClass : public AbstractClass
 		**	HouseBitArray so this bit space (per side) can no longer be silently mixed
 		**	with the per-instance bit space (per HeapID) that Allies/CloakedBy/etc. use.
 		*/
-		HouseSideBitArray RadarSpied;
+		std::set<HousesType> RadarSpied;
 
 		/*
 		**	Running score, based on units destroyed and units lost.
@@ -1035,7 +1035,7 @@ class HouseClass : public AbstractClass
 		**	EXTENSION: was `unsigned` (32-house ceiling via `1 << HeapID`); now a
 		**	HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		*/
-		HouseBitArray Allies;
+		std::set<HousesType> Allies;
 
 		/*
 		**	General low-power related damaged is doled out whenever this timer

@@ -3717,7 +3717,7 @@ bool CellClass::Goodie_Check(FootClass * object)
 				*/
 				while (utp == NULL) {
 					utp = UnitTypes[Random_Pick(UNIT_FIRST, (UnitType)(UnitTypes.Count()-1))];
-					if (utp->IsCrateGoodie && (utp->Ownable & (1 << object->Owner_HouseClass()->Class->HeapID)) && (Session.Options.Bases || Rule->BaseUnit != utp)) {
+					if (utp->IsCrateGoodie && (utp->Ownable.contains(ShiftToTheRightOne(object->Owner_HouseClass()->Class->HeapID))) && (Session.Options.Bases || Rule->BaseUnit != utp)) {
 						break;
 					}
 					utp = NULL;
@@ -5949,14 +5949,14 @@ void CellClass::Remove_Fogged_Objects(void)
 /// the house does not occupy this cell at all, -1 is returned.</returns>
 int CellClass::Occupation_Mask(HousesType house) const
 {
-	if (!OccupiedBy.Is_Set(house)) {
+	if (!OccupiedBy.contains(house)) {
 		return(-1);
 	}
 
 	int mask = 0;
 	for (int dir = 0; dir < FACING_COUNT; dir++) {
 		CellClass const & adjacent = Adjacent_Cell(FacingType(dir));
-		if (adjacent.OccupiedBy.Is_Set(house)) {
+		if (adjacent.OccupiedBy.contains(house)) {
 			mask |= (1 << dir);
 		}
 	}
@@ -6027,7 +6027,7 @@ bool CellClass::Can_Burrow_Here(void) const
 /// <returns>bool; Is the cell cloaked by that house?</returns>
 bool CellClass::Is_Cloaked(HousesType house) const
 {
-	return(CloakedBy.Is_Set(house));
+	return(CloakedBy.contains(house));
 }
 
 
@@ -6037,7 +6037,7 @@ bool CellClass::Is_Cloaked(HousesType house) const
 /// <returns>bool; Is the cell sensed by that house?</returns>
 bool CellClass::Is_Sensed(HousesType house) const
 {
-	return(SensedBy.Is_Set(house));
+	return(SensedBy.contains(house));
 }
 
 
@@ -6047,7 +6047,7 @@ bool CellClass::Is_Sensed(HousesType house) const
 /// </summary>
 void CellClass::Cloaked_By(HousesType house)
 {
-	CloakedBy.Set(house);
+	CloakedBy.insert(house);
 }
 
 
@@ -6057,7 +6057,7 @@ void CellClass::Cloaked_By(HousesType house)
 /// </summary>
 void CellClass::Uncloaked_By(HousesType house)
 {
-	CloakedBy.Clear(house);
+	CloakedBy.erase(house);
 }
 
 
@@ -6067,7 +6067,7 @@ void CellClass::Uncloaked_By(HousesType house)
 /// </summary>
 void CellClass::Sensed_By(HousesType house)
 {
-	SensedBy.Set(house);
+	SensedBy.insert(house);
 }
 
 
@@ -6078,7 +6078,7 @@ void CellClass::Sensed_By(HousesType house)
 /// </summary>
 void CellClass::Unsensed_By(HousesType house)
 {
-	SensedBy.Clear(house);
+	SensedBy.erase(house);
 }
 
 

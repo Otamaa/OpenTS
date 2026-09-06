@@ -404,7 +404,7 @@ HouseClass::HouseClass(HouseTypeClass const * type) :
 	IniName = Fetch_String(TXT_COMPUTER);	// Default computer name.
 	memset((void *)&Regions[0], 0x00, sizeof(Regions));
 	//Allies.Set(HeapID);
-	Control.Allies.Set(HeapID);
+	Control.Allies.insert(HeapID);
 
 	/*
 	**	Set the time of the first AI attack.
@@ -1045,23 +1045,24 @@ int HouseClass::Can_Build(ObjectTypeClass const * type, bool forced, bool includ
 			/*
 			**	Special hack to get certain objects to exist for both sides in the game.
 			*/
-			int own = type->Get_Ownable();
+			auto own = type->Get_Ownable();
 
 			/*
 			**	Check to see if this owner can build the object type specified.
 			*/
-			if (own == 0) {
+			if (own.empty()) {
 				return(0);
 			}
 
 			/// Checks if there's exactly one owner
-			if (((own - 1) & own) == 0) {
+			if(own.size() == 1)
+			{
 				bool found = false;
 				for (int i = 0; i < ConYards.Count(); i++) {
 					BuildingClass * conyard = ConYards[i];
 					if (!conyard->IsInLimbo && conyard->IsOn) {
 						if (conyard->Mission != MISSION_DECONSTRUCTION && conyard->MissionQueue != MISSION_DECONSTRUCTION) {
-							if (conyard->ActLike != HOUSE_NONE && ((1 << conyard->ActLike) & own) != 0) {
+							if (conyard->ActLike != HOUSE_NONE && own.contains(ShiftToTheRightOne(conyard->ActLike))) {
 								found = true;
 								break;
 							}
@@ -2012,7 +2013,7 @@ bool HouseClass::Is_Ally(HousesType house) const
 {
 	if (house == HeapID) return(true);
 	if (house != HOUSE_NONE) {
-		return(Allies.Is_Set(house));
+		return(Allies.contains(house));
 	}
 	return(false);
 }
@@ -2129,7 +2130,7 @@ void HouseClass::Make_Ally(HouseClass * house)
 {
 	if (Is_Allowed_To_Ally(house)) {
 
-		Allies.Set(house->HeapID);
+		Allies.insert(house->HeapID);
 
 		Recalc_Threat_Regions();
 		Clear_Anger(house);
@@ -2142,7 +2143,7 @@ void HouseClass::Make_Ally(HouseClass * house)
 		}
 
 		if (ScenarioInit) {
-			Control.Allies.Set(house->HeapID);
+			Control.Allies.insert(house->HeapID);
 		}
 
 		if (!ScenarioInit) {
@@ -2238,10 +2239,10 @@ void HouseClass::Make_Enemy(HouseClass * house)
 		Add_Anger(1, house);
 
 		if (house != NULL && Is_Ally(house)) {
-			Allies.Clear(house->HeapID);
+			Allies.erase(house->HeapID);
 
 			if (ScenarioInit) {
-				Control.Allies.Clear(house->HeapID);
+				Control.Allies.erase(house->HeapID);
 			}
 
 			Recalc_Threat_Regions();
@@ -2250,10 +2251,10 @@ void HouseClass::Make_Enemy(HouseClass * house)
 			**	Breaking an alliance is a bilateral event.
 			*/
 			if (house->Is_Ally(this)) {
-				house->Allies.Clear(HeapID);
+				house->Allies.erase(HeapID);
 
 				if (ScenarioInit) {
-					house->Control.Allies.Clear(HeapID);
+					house->Control.Allies.erase(HeapID);
 				}
 				house->Recalc_Threat_Regions();
 				house->Add_Anger(1, house);
@@ -5554,13 +5555,14 @@ void HouseClass::Read_INI(CCINIClass const & ini)
 	// play. Build the equivalent side-mask instead: the same "which sides is this house
 	// currently allied with" reduction that Write_INI() already performs when saving
 	// this same key back out.
-	int default_owners = 0;
+	std::set<HousesType> default_owners;
 	for (HousesType h = HOUSE_FIRST; h < Houses.Count(); h++) {
-		if (Allies.Is_Set(Houses[h]->HeapID)) {
-			default_owners |= (1 << Houses[h]->Class->House);
+		if (Allies.contains(Houses[h]->HeapID)) {
+			default_owners.insert(Houses[h]->Class->House);
 		}
 	}
-	int owners = ini.Get_Owners(hname, "Allies", default_owners);
+
+	std::set<HousesType> owners = ini.Get_Owners(hname, "Allies", default_owners);
 	Make_Ally(Houses[HeapID]);
 
 	Scheme = ini.Get_Scheme_Index(hname, "Color", Scheme);
@@ -5573,7 +5575,7 @@ void HouseClass::Read_INI(CCINIClass const & ini)
 	//Make_Ally(HOUSE_NEUTRAL);
 	for (HousesType h = HOUSE_FIRST; h < Houses.Count(); h++) {
 		HouseClass * hptr = Houses[h];
-		if ((owners & (1 << hptr->Class->House)) != 0) {
+		if (owners.contains(hptr->Class->House)) {
 			Make_Ally(hptr);
 		}
 	}
@@ -5635,10 +5637,10 @@ void HouseClass::Write_INI(CCINIClass & ini)
 	ini.Put_Int(name, "IQ", Control.IQ);
 	ini.Put_Bool(name, "PlayerControl", IsPlayerControl);
 
-	unsigned allies = 0;
+	std::set<HousesType> allies;
 	for (HousesType index = HOUSE_FIRST; index < Houses.Count(); index++) {
-		if (Control.Allies.Is_Set(Houses[index]->HeapID)) {
-			allies |= (1 << Houses[index]->Class->House);
+		if (Control.Allies.contains(Houses[index]->HeapID)) {
+			allies.insert(Houses[index]->Class->House);
 		}
 	}
 	ini.Put_Owners(name, "Allies", allies);
@@ -5903,7 +5905,7 @@ void HouseClass::Update_Spied_Power_Plants(void)
 			if (tech && tech->RTTI==RTTI_BUILDING) {
 				BuildingClass *bldg = (BuildingClass *)tech;
 				if (!bldg->IsOwnedByPlayer && bldg->Class->Power > 0) {
-					if (bldg->SpiedBy.Is_Set(PlayerPtr->Class->House)) {
+					if (bldg->SpiedBy.contains(PlayerPtr->Class->House)) {
 						bldg->Mark(MARK_CHANGE);
 					}
 				}
@@ -6415,7 +6417,11 @@ void HouseClass::Compute_CRC(CRCEngine & crc) const
 	crc(Drain);
 	crc(WhoLastHurtMe);
 	crc(Enemy);
-	Allies.Add_To_CRC(crc);
+
+	for(auto& ally : Allies) {
+		crc(ally);
+	}
+
 	Base.Compute_CRC(crc);
 }
 
@@ -6834,9 +6840,9 @@ void HouseClass::Begin_Construction(Cell const & center)
 /// none.</returns>
 BuildingTypeClass const * HouseClass::Get_First_Ownable(DynamicVectorClass<BuildingTypeClass const *> const & vector) const
 {
-	int owners = 1 << HouseTypes.ID(Class);
+	HousesType owners = ShiftToTheRightOne((HousesType)HouseTypes.ID(Class));
 	for (int i = 0; i < vector.Count(); i++) {
-		if (owners & vector[i]->Ownable) {
+		if (vector[i]->Ownable.contains(owners)) {
 			return(vector[i]);
 		}
 	}
@@ -6955,14 +6961,14 @@ void HouseClass::Make_Base_Nodes(void)
 		}
 	}
 
-	int ownable = 1 << HouseTypes.ID(Class);
+	HousesType ownable = ShiftToTheRightOne((HousesType)HouseTypes.ID(Class));
 
 	DynamicVectorClass<BuildingTypeClass const *> buildables;
 	DynamicVectorClass<bool> isadded;
 
 	for (index = 0; index < BuildingTypes.Count(); index++) {
 		BuildingTypeClass const * builtype = BuildingTypes[index];
-		if (ownable & builtype->Ownable &&
+		if (builtype->Ownable.contains(ownable) &&
 			builtype->CanAIBuildThis &&
 			builtype->Level <= Control.TechLevel &&
 			(!builtype->IsWeeder || VeinholeMonsterClass::VeinholeMonsters.Count() > 0) &&
@@ -7212,7 +7218,7 @@ Cell HouseClass::Where_To_Place_Building(BuildingTypeClass *buildingtype, int (*
 
 	/// Height at base placement center.
 	int base_height = Map[Base.PlacementCenter].Height;
-	int house_mask  = HeapID;
+	HousesType house_mask  = HeapID;
 
 	/// Declared out here deliberately -- scoped to the loop, MSVC6 pools its frame slot with
 	/// the cloak generator distance temporary and the whole slot map shifts.
@@ -7226,7 +7232,7 @@ Cell HouseClass::Where_To_Place_Building(BuildingTypeClass *buildingtype, int (*
 			/// Sum the directions of the neighbors this house already occupies.
 			for (int face = 0; face < FACING_COUNT; face++) {
 				CellClass *cptr = &Map[Adjacent_Cell(base_cell, (FacingType)face)];
-				if (cptr->OccupiedBy.Is_Set(house_mask)) {
+				if (cptr->OccupiedBy.contains(house_mask)) {
 					occupied_dir = Adjacent_Cell(occupied_dir, (FacingType)face);
 				}
 			}
@@ -7711,12 +7717,12 @@ bool HouseClass::AI_Build_Defense(int nodeindex, DynamicVectorClass<Cell> * cell
 /// <returns>Returns with the list of candidates, which may well be empty.</returns>
 DynamicVectorClass<BuildingTypeClass *> HouseClass::Get_Anti_Air_Defense_Buildings(DynamicVectorClass<BuildingTypeClass const *> & owned) const
 {
-	unsigned ownable = 1 << HouseTypes.ID(Class);
+	HousesType ownable = ShiftToTheRightOne((HousesType)HouseTypes.ID(Class));
 	DynamicVectorClass<BuildingTypeClass *> defenses;
 
 	for (int i = 0; i < BuildingTypes.Count(); i++) {
 		BuildingTypeClass * b = BuildingTypes[i];
-		if (ownable & b->Ownable && b->AntiAirValue > 0 && b->Level <= Control.TechLevel && AI_Has_Prerequisites(b, owned, owned.Count())) {
+		if (b->Ownable.contains(ownable) && b->AntiAirValue > 0 && b->Level <= Control.TechLevel && AI_Has_Prerequisites(b, owned, owned.Count())) {
 			defenses.Add(b);
 		}
 	}
@@ -7735,12 +7741,12 @@ DynamicVectorClass<BuildingTypeClass *> HouseClass::Get_Anti_Air_Defense_Buildin
 /// <returns>Returns with the list of candidates, which may well be empty.</returns>
 DynamicVectorClass<BuildingTypeClass *> HouseClass::Get_Anti_Armor_Defense_Buildings(DynamicVectorClass<BuildingTypeClass const *> & owned) const
 {
-	unsigned ownable = 1 << HouseTypes.ID(Class);
+	HousesType ownable = ShiftToTheRightOne((HousesType)HouseTypes.ID(Class));
 	DynamicVectorClass<BuildingTypeClass *> defenses;
 
 	for (int i = 0; i < BuildingTypes.Count(); i++) {
 		BuildingTypeClass * b = BuildingTypes[i];
-		if (ownable & b->Ownable && b->AntiArmorValue > 0 && b->Level <= Control.TechLevel && AI_Has_Prerequisites(b, owned, owned.Count())) {
+		if (b->Ownable.contains(ownable) && b->AntiArmorValue > 0 && b->Level <= Control.TechLevel && AI_Has_Prerequisites(b, owned, owned.Count())) {
 			defenses.Add(b);
 		}
 	}
@@ -7759,12 +7765,12 @@ DynamicVectorClass<BuildingTypeClass *> HouseClass::Get_Anti_Armor_Defense_Build
 /// <returns>Returns with the list of candidates, which may well be empty.</returns>
 DynamicVectorClass<BuildingTypeClass *> HouseClass::Get_Anti_Ground_Defense_Buildings(DynamicVectorClass<BuildingTypeClass const *> & owned) const
 {
-	unsigned ownable = 1 << HouseTypes.ID(Class);
+	HousesType ownable = ShiftToTheRightOne((HousesType)HouseTypes.ID(Class));
 	DynamicVectorClass<BuildingTypeClass *> defenses;
 
 	for (int i = 0; i < BuildingTypes.Count(); i++) {
 		BuildingTypeClass * b = BuildingTypes[i];
-		if (ownable & b->Ownable && b->AntiInfantryValue > 0 && b->Level <= Control.TechLevel && AI_Has_Prerequisites(b, owned, owned.Count())) {
+		if (b->Ownable.contains(ownable) && b->AntiInfantryValue > 0 && b->Level <= Control.TechLevel && AI_Has_Prerequisites(b, owned, owned.Count())) {
 			defenses.Add(b);
 		}
 	}
@@ -8136,7 +8142,7 @@ void HouseClass::Update_Factories(RTTIType rtti)
 /// <param name="house">The house that performed the spying.</param>
 void HouseClass::Update_Spied_Radar(HouseClass * house)
 {
-	RadarSpied.Set(house->Class->House);
+	RadarSpied.insert(house->Class->House);
 	if (house == PlayerPtr) {
 		for (int index = 0; index < Technos.Count(); index++) {
 			TechnoClass * obj = Technos[index];
@@ -9073,11 +9079,11 @@ bool HouseClass::Can_Build_Here(BuildingTypeClass *building, Cell const & cell)
 	int width = (2 * spacing) + building->Width();
 	int height = (2 * spacing) + building->Height();
 
-	int mask = HeapID;
+	HousesType mask = HeapID;
 
 	for (int x = cell.X - spacing - 1; x < cell.X + width + 1; x++) {
 		for (int y = cell.Y - spacing - 1; y < cell.Y + height + 1; y++) {
-			if (Map[Cell(x, y)].OccupiedBy.Is_Set(mask)) {
+			if (Map[Cell(x, y)].OccupiedBy.contains(mask)) {
 				return(true);
 			}
 		}

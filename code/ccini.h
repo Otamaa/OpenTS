@@ -72,6 +72,9 @@
 #include "vq.hh"
 #include "warhead.hh"
 #include "weapon.hh"
+#include "house.hh"
+
+#include <set>
 
 class TriggerTypeClass;
 class HouseTypeClass;
@@ -139,7 +142,7 @@ class CCINIClass : public INIClass
 		ThemeType Get_ThemeType(char const * section, char const * entry, ThemeType defvalue) const;
 		VQType Get_VQType(char const * section, char const * entry, VQType defvalue) const;
 		VocType Get_VocType(char const * section, char const * entry, VocType defvalue) const;
-		int Get_Owners(char const * section, char const * entry, int defvalue) const;
+		std::set<HousesType> Get_Owners(char const * section, char const * entry, const std::set<HousesType>& defvalue) const;
 		CrateType Get_CrateType(char const * section, char const * entry, CrateType defvalue) const;
 
 		SideType Get_Side(char const * section, char const * entry, SideType defvalue) const;
@@ -179,7 +182,7 @@ class CCINIClass : public INIClass
 		bool Put_Lepton(char const * section, char const * entry, LEPTON value);
 		bool Put_MPHType(char const * section, char const * entry, MPHType value);
 		bool Put_VQType(char const * section, char const * entry, VQType value);
-		bool Put_Owners(char const * section, char const * entry, int value);
+		bool Put_Owners(char const * section, char const * entry, const std::set<HousesType>& value);
 		bool Put_SourceType(char const * section, char const * entry, SourceType value);
 		bool Put_TheaterType(char const * section, char const * entry, TheaterType value);
 		bool Put_ThemeType(char const * section, char const * entry, ThemeType value);

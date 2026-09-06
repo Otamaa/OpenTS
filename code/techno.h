@@ -128,7 +128,7 @@ class TechnoClass :	public RadioClass,
 		**	a distinct type from HouseBitArray so this bit space (per side) can no
 		**	longer be silently mixed with the per-instance bit space (per HeapID).
 		*/
-		HouseSideBitArray SpiedBy;
+		std::set<HousesType> SpiedBy;
 
 		/*
 		**	If this object is part of a pseudo-team that the player is managing, then
@@ -477,7 +477,7 @@ class TechnoClass :	public RadioClass,
 		 * EXTENSION: was `unsigned` (32-house ceiling via `1 << HeapID`); now a
 		 * HouseBitArray so the house count is bounded only by MAX_HOUSES.
 		 */
-		HouseBitArray LimpetType;
+		std::set<HousesType> LimpetType;
 
 		/*
 		 * This is the speed penalty imposed by an attached limpet drone, expressed as a
@@ -574,7 +574,7 @@ class TechnoClass :	public RadioClass,
 		virtual bool Can_Player_Move(void) const override;
 		virtual bool Can_Repair(void) const override;
 		virtual int Value(void) const override;
-		virtual int Get_Ownable(void) const override;
+		virtual std::set<HousesType> Get_Ownable(void) const override;
 		virtual VisualType Visual_Character(bool raw = false, HouseClass const * = NULL) const override;
 
 		/*

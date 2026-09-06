@@ -446,11 +446,11 @@ LayerType ObjectClass::In_Which_Layer(void) const
  * HISTORY:                                                                                    *
  *   08/13/1995 JLB : Created.                                                                 *
  *=============================================================================================*/
-int ObjectClass::Get_Ownable(void) const
+std::set<HousesType> ObjectClass::Get_Ownable(void) const
 {
 	assert(this != NULL);
 
-	return(INT_MAX); /// All bits (owners), except for the highest bit, because 0xFFFFFFFF == -1 == no one
+	return {}; /// All bits (owners), except for the highest bit, because 0xFFFFFFFF == -1 == no one
 }
 
 

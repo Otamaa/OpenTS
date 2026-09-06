@@ -24,6 +24,8 @@
 #include "pip.hh"
 #include "speed.hh"
 
+#include <set>
+
 class VoxelAnimTypeClass;
 class UnitTypeClass;
 class ParticleSystemTypeClass;
@@ -317,7 +319,7 @@ class TechnoTypeClass : public ObjectTypeClass
 		**	to take possession of an object type otherwise not normally allowed.
 		**	This event usually occurs as a result of capture.
 		*/
-		int Ownable;
+		std::set<HousesType> Ownable;
 
 		/*
 		 * If a multiplayer game may include this type in a player's starting force, then this
@@ -697,7 +699,7 @@ class TechnoTypeClass : public ObjectTypeClass
 		virtual void const * Get_Cameo_Data(void) const override;
 		virtual int Cost_Of(HouseClass * house = NULL) const override;
 		virtual int Time_To_Build(void) const override;
-		virtual int Get_Ownable(void) const override;
+		virtual std::set<HousesType> Get_Ownable(void) const override;
 		virtual int Max_Pips(void) const override;
 		bool In_Range(Coord const & coord, AbstractClass * target, WeaponTypeClass * weapon) const;
 		virtual bool Read_INI(CCINIClass const & ini) override;

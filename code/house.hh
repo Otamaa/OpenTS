@@ -38,3 +38,7 @@ enum HousesType {
 	HOUSE_PLAYER_AT_FIRST=4475,
 	HOUSE_PLAYER_AT_LAST=4482
 };
+
+inline HousesType ShiftToTheRightOne(HousesType house) {
+	return (HousesType(1 << house));
+}

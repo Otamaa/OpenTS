@@ -323,7 +323,25 @@ BuildingClass * ObjectTypeClass::Who_Can_Build_Me(bool intheory, bool needsnopow
 {
 	BuildingClass * freebuilding = NULL;
 	BuildingClass * anybuilding = NULL;
-	int ownable = Get_Ownable();
+	auto ownable = Get_Ownable();
+
+	auto hasBitwiseOverlap = [](const std::set<HousesType>& setA, const std::set<HousesType>& setB) {
+		auto itA = setA.begin();
+		auto itB = setB.begin();
+
+		// Linearly scan both sorted sets simultaneously
+		while (itA != setA.end() && itB != setB.end()) {
+			if (*itA == *itB) {
+				return true; // Found a matching bit, equivalent to (A & B) != 0
+			}
+			if (*itA < *itB) {
+				++itA;
+			} else {
+				++itB;
+			}
+		}
+		return false; // No matching bits found, equivalent to (A & B) == 0
+	};
 
 	for (int index = 0; index < Buildings.Count(); index++) {
 		BuildingClass * building = Buildings[index];
@@ -335,8 +353,8 @@ BuildingClass * ObjectTypeClass::Who_Can_Build_Me(bool intheory, bool needsnopow
 			(!needsnopower || building->IsOn) &&
 			building->Mission != MISSION_DECONSTRUCTION && building->MissionQueue != MISSION_DECONSTRUCTION &&
 			(!legal || building->House->Can_Build(this, true, true) > 0) &&
-			(building->Class->Get_Ownable() & ownable) &&
-			(building->Class != Rule->BuildConst[0] || (1L << building->ActLike) & ownable)) {
+			(hasBitwiseOverlap(building->Class->Get_Ownable(), ownable)) &&
+			(building->Class != Rule->BuildConst[0] || ownable.contains(ShiftToTheRightOne(building->ActLike)))) {
 
 			/*
 			**	HACK ALERT: Helipads can build aircraft and airstrips can build

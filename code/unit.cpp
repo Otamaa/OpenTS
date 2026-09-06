@@ -6179,7 +6179,7 @@ double UnitClass::Weed_Load(void) const
 int UnitClass::Get_Max_Speed(void) const
 {
 	int speed = BASECLASS::Get_Max_Speed();
-	if (LimpetType) {
+	if (!LimpetType.empty()) {
 		speed = (int)(speed * LimpetSpeedFactor);
 	}
 	return(speed);

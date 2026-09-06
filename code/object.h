@@ -51,7 +51,9 @@
 #include "result.hh"
 #include "tevent.hh"
 #include "visual.hh"
+#include "house.hh"
 
+#include <set>
 #include <cassert>
 
 class ObjectClass;
@@ -227,7 +229,7 @@ class ObjectClass : public AbstractClass
 		virtual ObjectTypeClass const * Class_Of(void) const {return(0);}
 		bool Is_Infantry(void) const {return(Fetch_RTTI() == RTTI_INFANTRY);}
 		bool Is_Foot(void) const;
-		virtual int Get_Ownable(void) const;
+		virtual std::set<HousesType> Get_Ownable(void) const;
 		virtual char const * Full_Name(void) const {return("");}
 		virtual bool Can_Repair(void) const;
 		virtual bool Can_Demolish(void) const;
