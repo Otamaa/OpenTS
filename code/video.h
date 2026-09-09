@@ -20,6 +20,14 @@ enum VideoScaleMode {
 };
 
 
+// EXTENSION: full-screen GPU post effect applied to the frame before it is scaled and
+// presented, as one of the BackendPostFX values the renderer understands.
+enum VideoPostFX {
+	VIDEO_POSTFX_NONE,
+	VIDEO_POSTFX_BLOOM,
+};
+
+
 // Where the game's frame lands inside the window. The frame keeps its aspect ratio, so
 // the destination is centered and the window may show bars on two of its sides.
 // Drawable dimensions and the destination rectangle are measured in physical pixels.

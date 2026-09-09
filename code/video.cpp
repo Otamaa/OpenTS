@@ -131,6 +131,21 @@ static BackendScaleMode Backend_Scale_Mode(void)
 
 
 /// <summary>
+/// Converts the configured post effect into the one the renderer names.
+/// </summary>
+static BackendPostFX Backend_Post_FX(void)
+{
+	switch (Options.PostFX) {
+		case VIDEO_POSTFX_BLOOM:
+			return(BACKEND_POSTFX_BLOOM);
+
+		default:
+			return(BACKEND_POSTFX_NONE);
+	}
+}
+
+
+/// <summary>
 /// Starts the presenter on the game's window.
 /// </summary>
 /// <param name="window">The native window whose drawable area receives the frame.</param>
@@ -274,7 +289,8 @@ void Video_Present(void)
 	}
 
 	_Presenting = true;
-	Backend_Present(pixels, surface->Stride(), _ScaleInfo.DestX, _ScaleInfo.DestY, _ScaleInfo.DestWidth, _ScaleInfo.DestHeight, Backend_Scale_Mode());
+	Backend_Present(pixels, surface->Stride(), _ScaleInfo.DestX, _ScaleInfo.DestY, _ScaleInfo.DestWidth, _ScaleInfo.DestHeight, Backend_Scale_Mode(),
+		Backend_Post_FX(), Options.BloomThreshold, Options.BloomIntensity);
 	_Presenting = false;
 
 	_FrameIsDirty = false;

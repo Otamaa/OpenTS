@@ -107,6 +107,23 @@ WeaponTypeClass::WeaponTypeClass(char const * ininame) :
 	IsLobber(false),
 	IsBright(false),
 	LaserDuration(10),
+	LaserTexture(),
+	TexturePackageName(),
+	TextureFormatExtension("DDS"),
+	LaserTextureAnimated(false),
+	TextureAnimInterval(1),
+	AllowTextureCache(true),
+	LaserTextureThickness(20.0f),
+	LaserTextureSpeed(0.01f),
+	LaserTextureNoStretch(false),
+	LaserTextureFilter(2),
+	LaserTextureIsSheet(false),
+	LaserTextureSheetFrames(1),
+	LaserTextureSheetHorizontal(1),
+	LaserTextureSheetVertical(1),
+	LaserDistortion(),
+	LaserDistortionWidth(1.0f),
+	LaserDistortionDisplacement(1.0f),
 	IsBigLaser(false),
 	IsSonic(false),
 	IsTurboBoosted(false),
@@ -204,6 +221,23 @@ bool WeaponTypeClass::Read_INI(CCINIClass const & ini)
 		LaserOuterColor = ini.Get_RGBClass(IniName, "LaserOuterColor", LaserOuterColor);
 		LaserOuterSpread = ini.Get_RGBClass(IniName, "LaserOuterSpread", LaserOuterSpread);
 		LaserDuration = ini.Get_Int(IniName, "LaserDuration", LaserDuration);
+		ini.Get_String(IniName, "LaserTexture", LaserTexture);
+		ini.Get_String(IniName, "TexturePackageName", TexturePackageName);
+		ini.Get_String(IniName, "TextureFormatExtension", TextureFormatExtension);
+		LaserTextureAnimated = ini.Get_Bool(IniName, "LaserTextureAnimated", LaserTextureAnimated);
+		TextureAnimInterval = ini.Get_Int(IniName, "TextureAnimInterval", TextureAnimInterval);
+		AllowTextureCache = ini.Get_Bool(IniName, "AllowTextureCache", AllowTextureCache);
+		LaserTextureThickness = ini.Get_Float(IniName, "LaserTextureThickness", LaserTextureThickness);
+		LaserTextureSpeed = ini.Get_Float(IniName, "LaserTextureSpeed", LaserTextureSpeed);
+		LaserTextureNoStretch = ini.Get_Bool(IniName, "LaserTextureNoStretch", LaserTextureNoStretch);
+		LaserTextureFilter = ini.Get_Int(IniName, "LaserTextureFilter", LaserTextureFilter);
+		LaserTextureIsSheet = ini.Get_Bool(IniName, "LaserTextureIsSheet", LaserTextureIsSheet);
+		LaserTextureSheetFrames = ini.Get_Int(IniName, "LaserTextureSheetFrames", LaserTextureSheetFrames);
+		LaserTextureSheetHorizontal = ini.Get_Int(IniName, "LaserTextureSheetHorizontal", LaserTextureSheetHorizontal);
+		LaserTextureSheetVertical = ini.Get_Int(IniName, "LaserTextureSheetVertical", LaserTextureSheetVertical);
+		ini.Get_String(IniName, "LaserDistortion", LaserDistortion);
+		LaserDistortionWidth = ini.Get_Float(IniName, "LaserDistortionWidth", LaserDistortionWidth);
+		LaserDistortionDisplacement = ini.Get_Float(IniName, "LaserDistortionDisplacement", LaserDistortionDisplacement);
 		IsBigLaser = ini.Get_Bool(IniName, "IsBigLaser", IsBigLaser);
 
 		IsBright = ini.Get_Bool(IniName, "Bright", IsBright);
@@ -355,6 +389,23 @@ void WeaponTypeClass::Compute_CRC(CRCEngine &crc) const
 	crc(UseFireParticles);
 	crc(IsLobber);
 	crc((char)LaserDuration);
+	crc((char const *)LaserTexture);
+	crc((char const *)TexturePackageName);
+	crc((char const *)TextureFormatExtension);
+	crc(LaserTextureAnimated);
+	crc(TextureAnimInterval);
+	crc(AllowTextureCache);
+	crc(LaserTextureThickness);
+	crc(LaserTextureSpeed);
+	crc(LaserTextureNoStretch);
+	crc(LaserTextureFilter);
+	crc(LaserTextureIsSheet);
+	crc(LaserTextureSheetFrames);
+	crc(LaserTextureSheetHorizontal);
+	crc(LaserTextureSheetVertical);
+	crc((char const *)LaserDistortion);
+	crc(LaserDistortionWidth);
+	crc(LaserDistortionDisplacement);
 	crc(IsBigLaser);
 	crc(IsRailgun);
 	crc(IsElectric);
@@ -409,6 +460,23 @@ void WeaponTypeClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(IsLobber);
 	stream.Serialize(IsBright);
 	stream.Serialize(LaserDuration);
+	stream.Serialize(LaserTexture);
+	stream.Serialize(TexturePackageName);
+	stream.Serialize(TextureFormatExtension);
+	stream.Serialize(LaserTextureAnimated);
+	stream.Serialize(TextureAnimInterval);
+	stream.Serialize(AllowTextureCache);
+	stream.Serialize(LaserTextureThickness);
+	stream.Serialize(LaserTextureSpeed);
+	stream.Serialize(LaserTextureNoStretch);
+	stream.Serialize(LaserTextureFilter);
+	stream.Serialize(LaserTextureIsSheet);
+	stream.Serialize(LaserTextureSheetFrames);
+	stream.Serialize(LaserTextureSheetHorizontal);
+	stream.Serialize(LaserTextureSheetVertical);
+	stream.Serialize(LaserDistortion);
+	stream.Serialize(LaserDistortionWidth);
+	stream.Serialize(LaserDistortionDisplacement);
 	stream.Serialize(IsBigLaser);
 	stream.Serialize(IsSonic);
 	stream.Serialize(IsTurboBoosted);

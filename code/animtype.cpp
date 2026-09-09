@@ -130,6 +130,7 @@ AnimTypeClass::AnimTypeClass(char const *ininame) :
 	YDrawOffset(0),
 	RunningFrames(0),
 	IsFlamingGuy(false),
+	IsGPUOverlay(false),
 	IsVeins(false),
 	IsMeteor(false),
 	IsTiberiumChainReaction(false),
@@ -441,6 +442,7 @@ bool AnimTypeClass::Read_INI(CCINIClass const & ini)
 		IsAnimatedTiberium = ini.Get_Bool(Name(), "IsAnimatedTiberium", IsAnimatedTiberium);
 		IsShouldFogRemove = ini.Get_Bool(Name(), "ShouldFogRemove", IsShouldFogRemove);
 		IsFlamingGuy = ini.Get_Bool(Name(), "IsFlamingGuy", IsFlamingGuy);
+		IsGPUOverlay = ini.Get_Bool(Name(), "GPUOverlay", IsGPUOverlay);
 		RunningFrames = ini.Get_Int(Name(), "RunningFrames", RunningFrames);
 		YDrawOffset = ini.Get_Int(Name(), "YDrawOffset", YDrawOffset);
 
@@ -551,6 +553,7 @@ void AnimTypeClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(YDrawOffset);
 	stream.Serialize(RunningFrames);
 	stream.Serialize(IsFlamingGuy);
+	stream.Serialize(IsGPUOverlay);
 	stream.Serialize(IsVeins);
 	stream.Serialize(IsMeteor);
 	stream.Serialize(IsTiberiumChainReaction);

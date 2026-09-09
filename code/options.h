@@ -173,6 +173,20 @@ class OptionsClass {
 		int ScaleMode;
 
 		/*
+		 * This is the full-screen GPU effect applied to the frame before it is scaled and
+		 * presented, as one of the VideoPostFX values. None costs nothing extra to render.
+		 */
+		int PostFX;
+
+		/*
+		 * These tune the bloom post effect. BloomThreshold is the luma (0 to 1) a pixel
+		 * needs before it starts glowing; BloomIntensity is how strongly that glow is
+		 * added back into the frame. Both are ignored while PostFX is VIDEO_POSTFX_NONE.
+		 */
+		float BloomThreshold;
+		float BloomIntensity;
+
+		/*
 		 * If the frame may only be enlarged by whole multiples, then this flag will be
 		 * true. It keeps every game pixel the same size at the cost of a wider border.
 		 */

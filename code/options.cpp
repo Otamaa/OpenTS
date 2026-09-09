@@ -134,6 +134,9 @@ OptionsClass::OptionsClass(void) :
 	WindowWidth(-1),
 	WindowHeight(-1),
 	ScaleMode(VIDEO_SCALE_PIXELART),
+	PostFX(VIDEO_POSTFX_NONE),
+	BloomThreshold(0.8f),
+	BloomIntensity(0.6f),
 	IntegerScaling(false),
 	VSync(false),
 	Renderer(0),
@@ -337,6 +340,41 @@ static char const * Scale_Mode_Name(int mode)
 }
 
 
+// EXTENSION: the same name <-> value pattern as the frame filter above, for the
+// full-screen post effect.
+
+/// <summary>
+/// Turns the name of a post effect into the effect itself.
+/// </summary>
+/// <param name="name">The name as it appears in the settings file.</param>
+/// <param name="fallback">What to return when the name is not one of them.</param>
+/// <returns>int; One of the VideoPostFX values.</returns>
+static int PostFX_From_Name(char const * name, int fallback)
+{
+	if (stricmp(name, "None") == 0) return(VIDEO_POSTFX_NONE);
+	if (stricmp(name, "Bloom") == 0) return(VIDEO_POSTFX_BLOOM);
+
+	return(fallback);
+}
+
+
+/// <summary>
+/// Names the post effect setting for writing back.
+/// </summary>
+/// <param name="fx">One of the VideoPostFX values.</param>
+/// <returns>The name the settings file uses for that effect.</returns>
+static char const * PostFX_Name(int fx)
+{
+	switch (fx) {
+		case VIDEO_POSTFX_BLOOM:
+			return("Bloom");
+
+		default:
+			return("None");
+	}
+}
+
+
 /***********************************************************************************************
  * OptionsClass::Load_Settings -- reads options settings from the INI file                     *
  *                                                                                             *
@@ -418,6 +456,13 @@ void OptionsClass::Load_Settings(void)
 	ScaleMode = Scale_Mode_From_Name(scalename, ScaleMode);
 	DebugString("ScaleMode is %d, IntegerScaling is %s\n", ScaleMode, IntegerScaling == true ? "ON" : "OFF");
 
+	char postfxname[32];
+	ConfigINI.Get_String("Video", "PostFX", (char *)PostFX_Name(PostFX), postfxname, sizeof(postfxname));
+	PostFX = PostFX_From_Name(postfxname, PostFX);
+	BloomThreshold = ConfigINI.Get_Float("Video", "BloomThreshold", BloomThreshold);
+	BloomIntensity = ConfigINI.Get_Float("Video", "BloomIntensity", BloomIntensity);
+	DebugString("PostFX is %d (threshold %f, intensity %f)\n", PostFX, BloomThreshold, BloomIntensity);
+
 	CursorScale = ConfigINI.Get_Int("Video", "CursorScale", CursorScale);
 
 	Set_Sound_Volume(ConfigINI.Get_Float("Audio", "SoundVolume", SoundVolume), false);
@@ -482,6 +527,9 @@ void OptionsClass::Save_Settings (void)
 	ConfigINI.Put_Int("Video", "WindowWidth", WindowWidth);
 	ConfigINI.Put_Int("Video", "WindowHeight", WindowHeight);
 	ConfigINI.Put_String("Video", "ScaleMode", (char *)Scale_Mode_Name(ScaleMode));
+	ConfigINI.Put_String("Video", "PostFX", (char *)PostFX_Name(PostFX));
+	ConfigINI.Put_Float("Video", "BloomThreshold", BloomThreshold);
+	ConfigINI.Put_Float("Video", "BloomIntensity", BloomIntensity);
 	ConfigINI.Put_Bool("Video", "IntegerScaling", IntegerScaling);
 	ConfigINI.Put_Bool("Video", "VSync", VSync);
 	ConfigINI.Put_Int("Video", "Renderer", Renderer);

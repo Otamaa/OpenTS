@@ -34,6 +34,7 @@
 
 #include "abstype.h"
 #include "rgb.h"
+#include "stringid.h"
 #include "typelist.h"
 
 #include "armor.hh"
@@ -227,6 +228,100 @@ class WeaponTypeClass : public AbstractTypeClass
 		 * fades toward the end of that time rather than simply vanishing.
 		 */
 		char LaserDuration;
+
+		/*
+		 * EXTENSION: this weapon's beam texture, as a filename Load_Laser_Texture (see
+		 * laser.cpp) resolves the same way any other game asset is -- including from a
+		 * mix. Modeled on a third-party D3D9 ddraw wrapper's own LaserTexture= tag. Its
+		 * mere presence is what turns this beam into a hardware-composited, textured,
+		 * distorting quad instead of the plain depth-tested lines above; there is no
+		 * separate on/off flag. Unlike a GPU overlay anim, the beam still occludes
+		 * correctly against terrain and units, by sampling a snapshot of the software
+		 * renderer's own depth buffer. DDS is the only format actually decoded right now;
+		 * see Backend_Load_Texture's own doc comment.
+		 */
+		TStringID<64> LaserTexture;
+
+		/*
+		 * EXTENSION: an alternative to LaserTexture that loads a numbered sequence of
+		 * separate files instead of one -- NAME 0000.EXT, NAME 0001.EXT, and so on
+		 * (mind the space before the number), starting at 0000 and stopping at the first
+		 * one that fails to load. Takes precedence over LaserTexture when both are set.
+		 * The loaded frames are combined into one sheet texture the same machinery
+		 * LaserTextureIsSheet already uses handles internally; see Load_Laser_Texture in
+		 * laser.cpp for the actual file probing.
+		 */
+		TStringID<64> TexturePackageName;
+		TStringID<8> TextureFormatExtension;
+
+		/*
+		 * Governs playback speed specifically for a TexturePackageName sequence: true
+		 * steps to the next frame every TextureAnimInterval game frames. False (the
+		 * default) leaves the sequence on its first frame, same as any other sheet
+		 * texture that isn't told otherwise.
+		 */
+		bool LaserTextureAnimated;
+		int TextureAnimInterval;
+
+		/*
+		 * EXTENSION: whether a texture this weapon loads (LaserTexture, LaserDistortion,
+		 * or a TexturePackageName sequence) may be reused from the cache a later weapon
+		 * using the same filename(s) would otherwise hit. True (the default) always
+		 * reuses a cache hit; false always decodes and uploads a fresh copy instead. The
+		 * reference this is modeled on defaults this off and specifically discourages it
+		 * for DDS textures, for reasons tied to its own D3D9 texture pool that don't apply
+		 * here, so this engine's own default is the opposite of that one's.
+		 */
+		bool AllowTextureCache;
+
+		/*
+		 * The beam's on-screen width in pixels when LaserTexture is set. Ignored
+		 * otherwise. Named to match the reference's own LaserTextureThickness=.
+		 */
+		float LaserTextureThickness;
+
+		/*
+		 * How fast the beam's texture scrolls: in LaserTextureNoStretch (bullet) mapping,
+		 * pixels per game frame; in the default (direct/stretch) mapping, lengths of the
+		 * texture per game frame.
+		 */
+		float LaserTextureSpeed;
+
+		/*
+		 * false (the default) stretches LaserTexture across the beam's full length and
+		 * scrolls it; true keeps the texture at its own length and moves it along the
+		 * beam instead, repeating as needed. Ignored when LaserTextureIsSheet is true --
+		 * the two mapping styles are mutually exclusive, same as the reference.
+		 */
+		bool LaserTextureNoStretch;
+
+		/*
+		 * 1 samples LaserTexture with point (nearest) filtering; anything else (2 is the
+		 * reference's own default) samples it linearly.
+		 */
+		int LaserTextureFilter;
+
+		/*
+		 * If true, LaserTexture is a sprite sheet sliced into LaserTextureSheetHorizontal
+		 * by LaserTextureSheetVertical cells, animated through LaserTextureSheetFrames of
+		 * them at LaserTextureSpeed frames per game frame.
+		 */
+		bool LaserTextureIsSheet;
+		int LaserTextureSheetFrames;
+		int LaserTextureSheetHorizontal;
+		int LaserTextureSheetVertical;
+
+		/*
+		 * A second texture (same loading and sheet rules as LaserTexture) whose presence
+		 * turns on the beam's distortion pass: the composited scene behind the beam is
+		 * warped by LaserDistortionDisplacement using this texture's own RG channels as a
+		 * per-pixel offset, the same two-pass technique the reference's own
+		 * LaserDistortion= plus its ReShade LaserBlit.fx use. Empty skips the pass
+		 * entirely, at zero extra render cost.
+		 */
+		TStringID<64> LaserDistortion;
+		float LaserDistortionWidth;
+		float LaserDistortionDisplacement;
 
 		/*
 		 * If the glow that accompanies the laser beam should be the wider of the two sizes,

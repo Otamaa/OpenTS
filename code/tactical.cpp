@@ -1296,6 +1296,15 @@ void Tactical::Render(Surface & surface, bool fullredraw, int drawpass)
 		IonBlastClass::Draw_All();
 		Draw_Objects(true);
 		SpotLightClass::Draw_All();
+
+		// EXTENSION: this is the point at which the scene's depth (and shroud/ambient
+		// lighting) become final enough for a GPU beam or GPU overlay anim to test
+		// against -- everything that should occlude one has been drawn by now, and
+		// nothing between here and LaserDrawClass::Draw_All touches either buffer. See
+		// Capture_GPU_Effect_Snapshots's own doc comment in laser.h for why this call
+		// lives here rather than inside Draw_All itself.
+		Capture_GPU_Effect_Snapshots();
+
 		LaserDrawClass::Draw_All();
 
 		for (i = 0; i < CurrentObject.Count(); i++) {

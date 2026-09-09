@@ -65,6 +65,8 @@
 #include "_tactica.h"
 #include "animtype.h"
 #include "bench.h"
+#include "bgfxbackend.h"
+#include "bsurface.h"
 #include "ccrand.h"
 #include "cell.h"
 #include "combat.h"
@@ -92,6 +94,8 @@
 #include "techno.h"
 #include "tiberium.h"
 #include "tracker.h"
+
+#include "zbuffer.h"
 
 #include "bench.hh"
 
@@ -578,27 +582,67 @@ void AnimClass::Draw_It(Point2D const & point, Rect const & cliprect) const
 			/*
 			**	Draw the animation shape.
 			*/
-			if (IsBouncing) {
-				Point2D drawpoint(point.X, point.Y + Class->YDrawOffset + TacticalMap->Z_Lepton_To_Pixel(height));
-				Draw_Shape(*LogicalSurface, *convert, shapefile, shapenum, drawpoint, cliprect, ShapeFlags_Type(SHAPE_DARKEN|SHAPE_CENTER|SHAPE_WIN_REL|SHAPE_ZGRAD), NULL, Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height));
+			// EXTENSION: a GPU overlay anim skips the software blitter entirely. Its frame
+			// is rendered once into an isolated scratch surface sized to the shape's own
+			// canvas, then handed to the renderer as a textured quad drawn after everything
+			// else, rather than into LogicalSurface below. IsBouncing and IsTiled fall back
+			// to the ordinary software path even when GPUOverlay is set, since the
+			// destination math they need (a falling arc, a vertically repeating tile) is not
+			// reproduced by this path; such an anim simply won't get the GPU effect.
+			bool overlay_handled = false;
+
+			if (Class->IsGPUOverlay && !IsBouncing && !Class->IsTiled) {
+				int canvaswidth = shapefile->Get_Width();
+				int canvasheight = shapefile->Get_Height();
+
+				BSurface scratch(canvaswidth, canvasheight, 2);
+				scratch.Fill(BACKEND_OVERLAY_KEY_COLOR_565);
+				Draw_Shape(scratch, *convert, shapefile, shapenum, Point2D(canvaswidth / 2, canvasheight / 2), Rect(0, 0, canvaswidth, canvasheight), ShapeFlags_Type(flags|SHAPE_ZGRAD), NULL, 0, ZGRAD_GROUND, brightness);
+
+				void const * pixels = scratch.Lock();
+				if (pixels != NULL) {
+					int destx = point.X - canvaswidth / 2;
+					int desty = point.Y - canvasheight / 2 + Class->YDrawOffset;
+
+					// EXTENSION: the same depth an ordinary (non-overlay) anim would have
+					// passed to Draw_Shape's own height_offset, plus the same scroll-delta
+					// correction Backend_Queue_GPU_Beam's own depth needs -- see laser.cpp
+					// for why that correction exists.
+					int rawdepth = ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2;
+					if (DepthBuffer != NULL) {
+						rawdepth += DepthBuffer->Get_Scroll_Delta(point.Y - DepthBuffer->Get_Bounds().Y);
+					}
+
+					Backend_Queue_Overlay_Quad(pixels, scratch.Stride(), canvaswidth, canvasheight, destx, desty, canvaswidth, canvasheight, BACKEND_OVERLAY_KEY_COLOR_565, (float)rawdepth);
+					scratch.Unlock();
+				}
+
+				overlay_handled = true;
 			}
 
-			if (Class->IsTiled) {
-				int frameheight = shapefile->Get_Rect(0).Height;
-				Point2D origin = point;
-				Point2D drawpoint = origin - Point2D(0, frameheight / 2);
-				bool done = false;
-				int height_offset = ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2;
-				while (!done) {
-					Draw_Shape(*LogicalSurface, *AnimDrawer, shapefile, shapenum, Point2D(origin.X, drawpoint.Y + Class->YDrawOffset), TacticalRect, flags, NULL, height_offset, ZGRAD_90DEG, brightness);
-					if (drawpoint.Y < 0) done = true;
-					height_offset -= frameheight;
-					drawpoint.Y -= frameheight;
+			if (!overlay_handled) {
+				if (IsBouncing) {
+					Point2D drawpoint(point.X, point.Y + Class->YDrawOffset + TacticalMap->Z_Lepton_To_Pixel(height));
+					Draw_Shape(*LogicalSurface, *convert, shapefile, shapenum, drawpoint, cliprect, ShapeFlags_Type(SHAPE_DARKEN|SHAPE_CENTER|SHAPE_WIN_REL|SHAPE_ZGRAD), NULL, Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height));
 				}
-			} else if (Class->IsFlat) {
-				Draw_Shape(*LogicalSurface, *convert, shapefile, shapenum, Point2D(point.X, point.Y + Class->YDrawOffset), cliprect, ShapeFlags_Type(flags|SHAPE_ZGRAD), NULL, ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2, ZGRAD_GROUND, brightness);
-			} else {
-				Draw_Shape(*LogicalSurface, *convert, shapefile, shapenum, Point2D(point.X, point.Y + Class->YDrawOffset), cliprect, ShapeFlags_Type(flags|SHAPE_ZGRAD), NULL, ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2, ZGRAD_90DEG, brightness);
+
+				if (Class->IsTiled) {
+					int frameheight = shapefile->Get_Rect(0).Height;
+					Point2D origin = point;
+					Point2D drawpoint = origin - Point2D(0, frameheight / 2);
+					bool done = false;
+					int height_offset = ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2;
+					while (!done) {
+						Draw_Shape(*LogicalSurface, *AnimDrawer, shapefile, shapenum, Point2D(origin.X, drawpoint.Y + Class->YDrawOffset), TacticalRect, flags, NULL, height_offset, ZGRAD_90DEG, brightness);
+						if (drawpoint.Y < 0) done = true;
+						height_offset -= frameheight;
+						drawpoint.Y -= frameheight;
+					}
+				} else if (Class->IsFlat) {
+					Draw_Shape(*LogicalSurface, *convert, shapefile, shapenum, Point2D(point.X, point.Y + Class->YDrawOffset), cliprect, ShapeFlags_Type(flags|SHAPE_ZGRAD), NULL, ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2, ZGRAD_GROUND, brightness);
+				} else {
+					Draw_Shape(*LogicalSurface, *convert, shapefile, shapenum, Point2D(point.X, point.Y + Class->YDrawOffset), cliprect, ShapeFlags_Type(flags|SHAPE_ZGRAD), NULL, ZAdjust + Class->YDrawOffset - TacticalMap->Z_Lepton_To_Pixel(Height) - 2, ZGRAD_90DEG, brightness);
+				}
 			}
 
 			if (Class->IsFlamingGuy && !IsFalling) {
@@ -1069,6 +1113,12 @@ void AnimClass::Attach_To(ObjectClass * obj)
  *=============================================================================================*/
 LayerType AnimClass::In_Which_Layer(void) const
 {
+	// EXTENSION: GPU overlay anims always draw last, since the hardware compositing pass
+	// that draws them has no depth information to sort against the software-rendered
+	// scene with.
+	if (Class != NULL && Class->IsGPUOverlay) {
+		return(LAYER_TOP);
+	}
 	if (xObject != NULL || (Class != NULL && Class->IsGroundLayer)) {
 		return(LAYER_GROUND);
 	}

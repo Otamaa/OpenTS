@@ -270,6 +270,17 @@ class AnimTypeClass : public ObjectTypeClass
 		bool IsFlamingGuy;
 
 		/*
+		 * EXTENSION: if true, this animation is drawn as a hardware-composited GPU quad on
+		 * top of everything else in the scene, instead of through the normal software
+		 * shape blitter. Meant for effects like an ion beam or lightning bolt that always
+		 * belong above units, terrain and shroud, never underneath any of them, since the
+		 * GPU pass currently has no way to sort against the software-rendered scene's own
+		 * depth. Anything that can appear behind another object (anything ground- or
+		 * air-layer) must stay off this flag.
+		 */
+		bool IsGPUOverlay;
+
+		/*
 		 * If this animation is a veinhole's attack tendril, then this flag will be true. It
 		 * lays claim to the cell it occupies, damages whatever is standing there as it
 		 * plays, and is drawn with the local player's color scheme.

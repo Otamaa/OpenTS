@@ -9,8 +9,13 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bgfx.cmake/CMakeLists.txt")
         "  git submodule update --init --recursive")
 endif()
 
-# bgfx builds shader and texture tools by default; the engine ships neither.
-set(BGFX_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+# bgfx builds shader and texture tools by default; the engine shipped neither until the
+# postfx pipeline needed shaderc to compile the bloom shaders in code/shaders/postfx.
+# Geometry and texture tools stay off since nothing here uses them.
+set(BGFX_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+set(BGFX_BUILD_TOOLS_SHADER ON CACHE BOOL "" FORCE)
+set(BGFX_BUILD_TOOLS_GEOMETRY OFF CACHE BOOL "" FORCE)
+set(BGFX_BUILD_TOOLS_TEXTURE OFF CACHE BOOL "" FORCE)
 set(BGFX_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BGFX_INSTALL OFF CACHE BOOL "" FORCE)
 set(BGFX_CONFIG_RENDERER_WEBGPU OFF CACHE BOOL "" FORCE)

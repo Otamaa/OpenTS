@@ -151,10 +151,105 @@ add_dependencies(OpenTS OpenTSBuildStamp)
 set(BGFX_ROOT "${CMAKE_SOURCE_DIR}/thirdparty/bgfx.cmake/bgfx")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/bgfxbackend.cpp" PROPERTIES
     INCLUDE_DIRECTORIES
-        "${BGFX_ROOT}/include;${CMAKE_SOURCE_DIR}/thirdparty/bgfx.cmake/bx/include;${BGFX_ROOT}/examples/common/imgui"
+        "${BGFX_ROOT}/include;${CMAKE_SOURCE_DIR}/thirdparty/bgfx.cmake/bx/include;${BGFX_ROOT}/examples/common/imgui;${CMAKE_SOURCE_DIR}/thirdparty/bgfx.cmake/bimg/include;${CMAKE_SOURCE_DIR}/thirdparty/stb"
     COMPILE_DEFINITIONS
-        "BX_CONFIG_DEBUG=$<IF:$<CONFIG:Debug>,1,$<BOOL:${BX_CONFIG_DEBUG}>>"
+        "BX_CONFIG_DEBUG=$<IF:$<CONFIG:Debug>,1,$<BOOL:${BX_CONFIG_DEBUG}>>;$<$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>:OPENTS_BUILD_64BIT>"
     COMPILE_OPTIONS "/Zc:preprocessor"
+)
+
+# EXTENSION: compiles the postfx shaders (code/shaders/postfx) into per-profile headers,
+# then points bgfxbackend.cpp at the directory containing them. AS_HEADERS names each
+# generated array to match what BGFX_EMBEDDED_SHADER() in that file expects; see the
+# per-profile #include block above the shader's own #include of this project's headers.
+#
+# BGFX_SHADER_INCLUDE_PATH is bgfx_compile_shaders()'s own -i path for a shader's
+# #include <bgfx_shader.sh>. bgfx.cmake references this variable but never sets it
+# itself -- it's on the consumer to point it at bgfx's own src directory, and without it
+# every shader compiled below fails to parse at its #include line with a bare
+# "'declaration' : Expected", since the include silently resolves to nothing.
+set(BGFX_SHADER_INCLUDE_PATH "${BGFX_ROOT}/src")
+
+# EXTENSION: s_6_0 (Shader Model 6, compiled via DXC) is only added for a 64-bit build.
+# DXC needs dxcompiler.dll/dxil.dll discoverable next to shaderc.exe, which in practice
+# tends to actually be there on an x64 toolchain and tends not to be on the x86 one this
+# project currently builds as -- s_5_0 (DXBC, via the much more universally available
+# d3dcompiler_47.dll) covers D3D11/D3D12 either way, so 32-bit simply doesn't try SM6 at
+# all rather than risk the same missing-DXC failure this was written to fix. Matches
+# OPENTS_BUILD_64BIT in code/bgfxbackend.cpp, which the embedded-shader registration side
+# of this same profile choice depends on; see that file's own comment.
+set(OPENTS_SHADER_PROFILES spirv 430 300_es s_5_0)
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    list(APPEND OPENTS_SHADER_PROFILES s_6_0)
+endif()
+
+set(OPENTS_POSTFX_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders/postfx")
+set(OPENTS_POSTFX_SHADER_OUTPUT_DIR "${OPENTS_GENERATED_DIR}/postfx-shaders")
+
+bgfx_compile_shaders(
+    TYPE VERTEX
+    SHADERS "${OPENTS_POSTFX_SHADER_DIR}/vs_postfx.sc"
+    VARYING_DEF "${OPENTS_POSTFX_SHADER_DIR}/varying.def.sc"
+    OUTPUT_DIR "${OPENTS_POSTFX_SHADER_OUTPUT_DIR}"
+    OUT_FILES_VAR OPENTS_POSTFX_VERTEX_OUTPUTS
+    PROFILES ${OPENTS_SHADER_PROFILES}
+    AS_HEADERS
+)
+
+bgfx_compile_shaders(
+    TYPE FRAGMENT
+    SHADERS
+        "${OPENTS_POSTFX_SHADER_DIR}/fs_bloom_bright.sc"
+        "${OPENTS_POSTFX_SHADER_DIR}/fs_bloom_blur.sc"
+        "${OPENTS_POSTFX_SHADER_DIR}/fs_bloom_combine.sc"
+        "${OPENTS_POSTFX_SHADER_DIR}/fs_distortwarp.sc"
+    VARYING_DEF "${OPENTS_POSTFX_SHADER_DIR}/varying.def.sc"
+    OUTPUT_DIR "${OPENTS_POSTFX_SHADER_OUTPUT_DIR}"
+    OUT_FILES_VAR OPENTS_POSTFX_FRAGMENT_OUTPUTS
+    PROFILES ${OPENTS_SHADER_PROFILES}
+    AS_HEADERS
+)
+
+# The compile commands above only run if something actually depends on their outputs.
+add_custom_target(OpenTSPostFXShaders DEPENDS ${OPENTS_POSTFX_VERTEX_OUTPUTS} ${OPENTS_POSTFX_FRAGMENT_OUTPUTS})
+add_dependencies(OpenTS OpenTSPostFXShaders)
+
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/bgfxbackend.cpp" APPEND PROPERTY
+    INCLUDE_DIRECTORIES "${OPENTS_POSTFX_SHADER_OUTPUT_DIR}"
+)
+
+# EXTENSION: the GPU beam shaders (code/shaders/gpubeam), compiled the same way and added
+# to the same include path bgfxbackend.cpp already has for the postfx headers above.
+set(OPENTS_GPUBEAM_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gpubeam")
+set(OPENTS_GPUBEAM_SHADER_OUTPUT_DIR "${OPENTS_GENERATED_DIR}/gpubeam-shaders")
+
+bgfx_compile_shaders(
+    TYPE VERTEX
+    SHADERS "${OPENTS_GPUBEAM_SHADER_DIR}/vs_gpubeam.sc"
+    VARYING_DEF "${OPENTS_GPUBEAM_SHADER_DIR}/varying.def.sc"
+    OUTPUT_DIR "${OPENTS_GPUBEAM_SHADER_OUTPUT_DIR}"
+    OUT_FILES_VAR OPENTS_GPUBEAM_VERTEX_OUTPUTS
+    PROFILES ${OPENTS_SHADER_PROFILES}
+    AS_HEADERS
+)
+
+bgfx_compile_shaders(
+    TYPE FRAGMENT
+    SHADERS
+        "${OPENTS_GPUBEAM_SHADER_DIR}/fs_gpubeam.sc"
+        "${OPENTS_GPUBEAM_SHADER_DIR}/fs_gpubeam_distort.sc"
+        "${OPENTS_GPUBEAM_SHADER_DIR}/fs_anim_overlay.sc"
+    VARYING_DEF "${OPENTS_GPUBEAM_SHADER_DIR}/varying.def.sc"
+    OUTPUT_DIR "${OPENTS_GPUBEAM_SHADER_OUTPUT_DIR}"
+    OUT_FILES_VAR OPENTS_GPUBEAM_FRAGMENT_OUTPUTS
+    PROFILES ${OPENTS_SHADER_PROFILES}
+    AS_HEADERS
+)
+
+add_custom_target(OpenTSGPUBeamShaders DEPENDS ${OPENTS_GPUBEAM_VERTEX_OUTPUTS} ${OPENTS_GPUBEAM_FRAGMENT_OUTPUTS})
+add_dependencies(OpenTS OpenTSGPUBeamShaders)
+
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/bgfxbackend.cpp" APPEND PROPERTY
+    INCLUDE_DIRECTORIES "${OPENTS_GPUBEAM_SHADER_OUTPUT_DIR}"
 )
 
 # bx rewrites __stdcall while its headers are being parsed by clang-cl.  Force the
