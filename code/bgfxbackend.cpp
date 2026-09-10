@@ -235,6 +235,9 @@ static bgfx::ProgramHandle _GPUBeamProgram = BGFX_INVALID_HANDLE;
 static bgfx::ProgramHandle _AnimOverlayProgram = BGFX_INVALID_HANDLE;
 static bgfx::UniformHandle _DepthSampler = BGFX_INVALID_HANDLE;
 static bgfx::UniformHandle _AmbientSampler = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _VisibilitySampler = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _VisibilityParamsUniform = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _VisibilityFlagsUniform = BGFX_INVALID_HANDLE;
 static bgfx::UniformHandle _DepthParamsUniform = BGFX_INVALID_HANDLE;
 static bgfx::UniformHandle _BeamParamsUniform = BGFX_INVALID_HANDLE;
 static bgfx::UniformHandle _BeamSheetParamsUniform = BGFX_INVALID_HANDLE;
@@ -280,6 +283,17 @@ static bgfx::TextureHandle _AmbientSnapshotTexture = BGFX_INVALID_HANDLE;
 static int _AmbientSnapshotWidth = 0;
 static int _AmbientSnapshotHeight = 0;
 static bool _HasAmbientSnapshot = false;
+
+// EXTENSION: the shroud/fog visibility snapshot. Built cell-by-cell (see
+// Tactical::Capture_GPU_Visibility_Mask), not copied from a ring-buffered software
+// surface like the two above, so it carries its own origin rather than sharing the depth
+// snapshot's -- there's no guarantee it covers exactly the same Rect.
+static bgfx::TextureHandle _VisibilitySnapshotTexture = BGFX_INVALID_HANDLE;
+static int _VisibilitySnapshotWidth = 0;
+static int _VisibilitySnapshotHeight = 0;
+static int _VisibilitySnapshotOriginX = 0;
+static int _VisibilitySnapshotOriginY = 0;
+static bool _HasVisibilitySnapshot = false;
 
 // DSurface's own depth buffer is 16 bit with a ZBUFFER_MAX of 0x8000; both the snapshot
 // and every beam's own endpoint depths are normalized by this before either reaches the
@@ -826,6 +840,16 @@ static bgfx::TextureHandle Run_GPU_Beam_Composite(bgfx::TextureHandle base, bool
 		};
 		float originflip = bgfx::getCaps()->originBottomLeft ? 1.0f : 0.0f;
 
+		float visibilityparams[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		float visibilityflags[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		if (_HasVisibilitySnapshot && bgfx::isValid(_VisibilitySnapshotTexture)) {
+			visibilityparams[0] = (float)_VisibilitySnapshotOriginX;
+			visibilityparams[1] = (float)_VisibilitySnapshotOriginY;
+			visibilityparams[2] = 1.0f / (float)_VisibilitySnapshotWidth;
+			visibilityparams[3] = 1.0f / (float)_VisibilitySnapshotHeight;
+			visibilityflags[0] = 1.0f;
+		}
+
 		for (size_t index = 0; index < _BeamQueue.size(); index++) {
 			BackendGPUBeam const & beam = _BeamQueue[index];
 			BackendGPUBeamStyle const & style = beam.Style;
@@ -848,9 +872,14 @@ static bgfx::TextureHandle Run_GPU_Beam_Composite(bgfx::TextureHandle base, bool
 			if (_HasAmbientSnapshot && bgfx::isValid(_AmbientSnapshotTexture)) {
 				bgfx::setTexture(2, _AmbientSampler, _AmbientSnapshotTexture, linear);
 			}
+			if (visibilityflags[0] > 0.5f) {
+				bgfx::setTexture(3, _VisibilitySampler, _VisibilitySnapshotTexture, linear);
+			}
 			bgfx::setUniform(_DepthParamsUniform, depthparams);
 			bgfx::setUniform(_BeamParamsUniform, beamparams);
 			bgfx::setUniform(_BeamSheetParamsUniform, sheetparams);
+			bgfx::setUniform(_VisibilityParamsUniform, visibilityparams);
+			bgfx::setUniform(_VisibilityFlagsUniform, visibilityflags);
 			Submit_Beam_Quad(VIEW_GPU_BEAM, _GPUBeamProgram, beam);
 
 			bgfx::TextureHandle distorttexture = Resolve_Loaded_Texture(style.DistortionTexture);
@@ -858,10 +887,15 @@ static bgfx::TextureHandle Run_GPU_Beam_Composite(bgfx::TextureHandle base, bool
 				float distortparams[4] = { style.DistortionDisplacement, 0.0f, 0.0f, 0.0f };
 				bgfx::setTexture(0, _DepthSampler, _DepthSnapshotTexture, linear);
 				bgfx::setTexture(1, _DistortSampler, distorttexture, texfilter | BGFX_SAMPLER_U_CLAMP);
+				if (visibilityflags[0] > 0.5f) {
+					bgfx::setTexture(3, _VisibilitySampler, _VisibilitySnapshotTexture, linear);
+				}
 				bgfx::setUniform(_DepthParamsUniform, depthparams);
 				bgfx::setUniform(_BeamParamsUniform, beamparams);
 				bgfx::setUniform(_BeamSheetParamsUniform, sheetparams);
 				bgfx::setUniform(_DistortParamsUniform, distortparams);
+				bgfx::setUniform(_VisibilityParamsUniform, visibilityparams);
+				bgfx::setUniform(_VisibilityFlagsUniform, visibilityflags);
 				Submit_Beam_Quad(VIEW_DISTORTION, _GPUBeamDistortProgram, beam);
 			}
 		}
@@ -958,6 +992,16 @@ static bgfx::TextureHandle Run_Overlay_Composite(bgfx::TextureHandle base, bool 
 		float originflip = bgfx::getCaps()->originBottomLeft ? 1.0f : 0.0f;
 		float beamparams[4] = { originflip, 0.0f, 0.0f, _HasAmbientSnapshot ? 1.0f : 0.0f };
 
+		float visibilityparams[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		float visibilityflags[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		if (_HasVisibilitySnapshot && bgfx::isValid(_VisibilitySnapshotTexture)) {
+			visibilityparams[0] = (float)_VisibilitySnapshotOriginX;
+			visibilityparams[1] = (float)_VisibilitySnapshotOriginY;
+			visibilityparams[2] = 1.0f / (float)_VisibilitySnapshotWidth;
+			visibilityparams[3] = 1.0f / (float)_VisibilitySnapshotHeight;
+			visibilityflags[0] = 1.0f;
+		}
+
 		for (size_t index = 0; index < _OverlayQueue.size(); index++) {
 			BackendOverlayQuad const & quad = _OverlayQueue[index];
 			if (!bgfx::isValid(quad.Texture)) {
@@ -968,8 +1012,13 @@ static bgfx::TextureHandle Run_Overlay_Composite(bgfx::TextureHandle base, bool 
 			if (_HasAmbientSnapshot && bgfx::isValid(_AmbientSnapshotTexture)) {
 				bgfx::setTexture(2, _AmbientSampler, _AmbientSnapshotTexture, linear);
 			}
+			if (visibilityflags[0] > 0.5f) {
+				bgfx::setTexture(3, _VisibilitySampler, _VisibilitySnapshotTexture, linear);
+			}
 			bgfx::setUniform(_DepthParamsUniform, depthparams);
 			bgfx::setUniform(_BeamParamsUniform, beamparams);
+			bgfx::setUniform(_VisibilityParamsUniform, visibilityparams);
+			bgfx::setUniform(_VisibilityFlagsUniform, visibilityflags);
 			Submit_Overlay_Quad(VIEW_ANIM_OVERLAY, quad.DestX, quad.DestY, quad.DestWidth, quad.DestHeight, quad.Depth, 0xFFFFFFFF);
 		}
 	}
@@ -1180,6 +1229,9 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 
 	_DepthSampler = bgfx::createUniform("s_depth", bgfx::UniformType::Sampler);
 	_AmbientSampler = bgfx::createUniform("s_ambient", bgfx::UniformType::Sampler);
+	_VisibilitySampler = bgfx::createUniform("s_visibility", bgfx::UniformType::Sampler);
+	_VisibilityParamsUniform = bgfx::createUniform("u_visibilityParams", bgfx::UniformType::Vec4);
+	_VisibilityFlagsUniform = bgfx::createUniform("u_visibilityFlags", bgfx::UniformType::Vec4);
 	_DepthParamsUniform = bgfx::createUniform("u_depthParams", bgfx::UniformType::Vec4);
 	_BeamParamsUniform = bgfx::createUniform("u_beamParams", bgfx::UniformType::Vec4);
 	_BeamSheetParamsUniform = bgfx::createUniform("u_beamSheetParams", bgfx::UniformType::Vec4);
@@ -1188,7 +1240,8 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	_DistortParamsUniform = bgfx::createUniform("u_distortParams", bgfx::UniformType::Vec4);
 
 	if (!bgfx::isValid(_GPUBeamProgram) || !bgfx::isValid(_GPUBeamDistortProgram) || !bgfx::isValid(_AnimOverlayProgram) || !bgfx::isValid(_DistortWarpProgram)
-		|| !bgfx::isValid(_DepthSampler) || !bgfx::isValid(_AmbientSampler) || !bgfx::isValid(_DepthParamsUniform) || !bgfx::isValid(_BeamParamsUniform)
+		|| !bgfx::isValid(_DepthSampler) || !bgfx::isValid(_AmbientSampler) || !bgfx::isValid(_VisibilitySampler) || !bgfx::isValid(_VisibilityParamsUniform) || !bgfx::isValid(_VisibilityFlagsUniform)
+		|| !bgfx::isValid(_DepthParamsUniform) || !bgfx::isValid(_BeamParamsUniform)
 		|| !bgfx::isValid(_BeamSheetParamsUniform) || !bgfx::isValid(_BeamTextureSampler)
 		|| !bgfx::isValid(_DistortSampler) || !bgfx::isValid(_DistortParamsUniform)) {
 		bgfx::shutdown();
@@ -1286,6 +1339,22 @@ void Backend_Shutdown(void)
 	if (bgfx::isValid(_AmbientSampler)) {
 		bgfx::destroy(_AmbientSampler);
 		_AmbientSampler = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_VisibilitySampler)) {
+		bgfx::destroy(_VisibilitySampler);
+		_VisibilitySampler = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_VisibilityParamsUniform)) {
+		bgfx::destroy(_VisibilityParamsUniform);
+		_VisibilityParamsUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_VisibilityFlagsUniform)) {
+		bgfx::destroy(_VisibilityFlagsUniform);
+		_VisibilityFlagsUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_VisibilitySnapshotTexture)) {
+		bgfx::destroy(_VisibilitySnapshotTexture);
+		_VisibilitySnapshotTexture = BGFX_INVALID_HANDLE;
 	}
 	if (bgfx::isValid(_DepthParamsUniform)) {
 		bgfx::destroy(_DepthParamsUniform);
@@ -1426,6 +1495,7 @@ void Backend_Present(void const * pixels, int pitch, int destx, int desty, int d
 		Discard_Overlay_Queue();
 		Discard_Beam_Queue();
 		_HasDepthSnapshot = false;
+		_HasVisibilitySnapshot = false;
 		return;
 	}
 
@@ -1434,6 +1504,7 @@ void Backend_Present(void const * pixels, int pitch, int destx, int desty, int d
 		Discard_Overlay_Queue();
 		Discard_Beam_Queue();
 		_HasDepthSnapshot = false;
+		_HasVisibilitySnapshot = false;
 		return;
 	}
 
@@ -1542,6 +1613,7 @@ void Backend_Present(void const * pixels, int pitch, int destx, int desty, int d
 	Discard_Overlay_Queue();
 	Discard_Beam_Queue();
 	_HasDepthSnapshot = false;
+	_HasVisibilitySnapshot = false;
 }
 
 
@@ -1613,6 +1685,7 @@ void Backend_Upload_Depth_Snapshot(void const * depths, int pitch, int width, in
 {
 	if (!_Initialized || depths == NULL || width <= 0 || height <= 0) {
 		_HasDepthSnapshot = false;
+		_HasVisibilitySnapshot = false;
 		return;
 	}
 
@@ -1641,6 +1714,7 @@ void Backend_Upload_Depth_Snapshot(void const * depths, int pitch, int width, in
 	if (!bgfx::isValid(_DepthSnapshotTexture)) {
 		delete [] normalized;
 		_HasDepthSnapshot = false;
+		_HasVisibilitySnapshot = false;
 		return;
 	}
 
@@ -1706,6 +1780,47 @@ void Backend_Upload_Ambient_Snapshot(void const * values, int pitch, int width, 
 	delete [] normalized;
 
 	_HasAmbientSnapshot = true;
+}
+
+
+/// <summary>
+/// Uploads a fresh shroud/fog visibility snapshot for the next Backend_Present call. See
+/// the declaration in bgfxbackend.h for the contract values has to satisfy. Unlike the
+/// depth and ambient snapshots, this one's source is already exactly width x height bytes
+/// with no padding to account for, since Tactical::Capture_GPU_Visibility_Mask builds it
+/// fresh each call rather than copying it out of an existing ring-buffered surface.
+/// </summary>
+void Backend_Upload_Visibility_Snapshot(void const * values, int width, int height, int originx, int originy)
+{
+	if (!_Initialized || values == NULL || width <= 0 || height <= 0) {
+		_HasVisibilitySnapshot = false;
+		return;
+	}
+
+	if (!bgfx::isValid(_VisibilitySnapshotTexture) || _VisibilitySnapshotWidth != width || _VisibilitySnapshotHeight != height) {
+		if (bgfx::isValid(_VisibilitySnapshotTexture)) {
+			bgfx::destroy(_VisibilitySnapshotTexture);
+		}
+		// Point-sampled: this is a coarse, cell-granularity mask, and linear filtering
+		// would just blur its already-blocky boundaries rather than smoothing anything
+		// meaningful.
+		_VisibilitySnapshotTexture = bgfx::createTexture2D((uint16_t)width, (uint16_t)height, false, 1, bgfx::TextureFormat::R8,
+			BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_POINT);
+		_VisibilitySnapshotWidth = width;
+		_VisibilitySnapshotHeight = height;
+	}
+
+	if (!bgfx::isValid(_VisibilitySnapshotTexture)) {
+		_HasVisibilitySnapshot = false;
+		return;
+	}
+
+	bgfx::updateTexture2D(_VisibilitySnapshotTexture, 0, 0, 0, 0, (uint16_t)width, (uint16_t)height,
+		bgfx::copy(values, (uint32_t)((size_t)width * (size_t)height)), (uint16_t)width);
+
+	_VisibilitySnapshotOriginX = originx;
+	_VisibilitySnapshotOriginY = originy;
+	_HasVisibilitySnapshot = true;
 }
 
 

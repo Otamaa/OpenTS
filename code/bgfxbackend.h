@@ -112,6 +112,16 @@ void Backend_Upload_Depth_Snapshot(void const * depths, int pitch, int width, in
 // frame; skip it on a frame with no GPU beams queued, same as the depth snapshot.
 void Backend_Upload_Ambient_Snapshot(void const * values, int pitch, int width, int height, int originx, int originy);
 
+// EXTENSION: uploads a snapshot of the current shroud/fog state, one byte per pixel: 0
+// for shrouded (never explored), 128 for fogged (explored, not currently visible), 255
+// for fully visible (current line of sight) -- matching what an R8 texture needs, since
+// the shader reads this back as a plain 0..1 float. originx/originy work the same as the
+// other snapshots above. A GPU beam or overlay anim should be gated on value > 0.9
+// (current line of sight only); a full-screen effect like water or weather should be
+// gated on value > 0.1 (explored at all, fog included). Safe to call every frame; skip it
+// on a frame with no GPU effect that needs it queued.
+void Backend_Upload_Visibility_Snapshot(void const * values, int width, int height, int originx, int originy);
+
 
 // EXTENSION: an opaque handle to a texture Backend_Load_Texture returns. Deliberately not
 // a bgfx type, so this header still exposes no bgfx type to the rest of the codebase.

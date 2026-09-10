@@ -5,12 +5,22 @@ $input v_texcoord0, v_color0, v_depth
 SAMPLER2D(s_depth, 0);
 SAMPLER2D(s_beamtex, 1);
 SAMPLER2D(s_ambient, 2);
+SAMPLER2D(s_visibility, 3);
 
 // x/y = where the depth snapshot's own pixel (0,0) sits in this view's own pixel space;
 // z/w = 1/width, 1/height of the depth snapshot texture. The ambient (shroud/lighting)
 // snapshot shares this exactly -- DepthBuffer and AlphaBuffer are always constructed
 // covering the same Rect -- so there is no separate set of these for it.
 uniform vec4 u_depthParams;
+
+// Same layout as u_depthParams, but for the visibility (shroud/fog) snapshot, which has
+// its own origin rather than necessarily matching the depth/ambient snapshots' Rect.
+uniform vec4 u_visibilityParams;
+
+// x = 1.0 when a visibility snapshot was uploaded this frame; 0.0 skips the test
+// entirely, same fail-open choice the ambient snapshot makes when it has nothing to test
+// against. y/z/w unused.
+uniform vec4 u_visibilityFlags;
 
 // x = 1.0 when the depth snapshot's rows run bottom-to-top relative to this view's own
 // top-to-bottom pixel space (the same origin correction every render-to-texture read in
@@ -56,6 +66,23 @@ void main()
 		float scenedepth = texture2D(s_depth, sampletexel).r;
 		if (v_depth - 0.0005 >= scenedepth) {
 			discard;
+		}
+	}
+
+	// EXTENSION: a beam only draws where the player currently has line of sight -- shroud
+	// and fog both hide it, same as a unit or projectile would be hidden. Outside the
+	// visibility snapshot's own bounds there is nothing to test against, so (like the
+	// depth test above) the beam simply draws there rather than being clipped to it.
+	if (u_visibilityFlags.x > 0.5) {
+		vec2 visibletexel = (gl_FragCoord.xy - u_visibilityParams.xy) * u_visibilityParams.zw;
+		if (u_beamParams.x > 0.5) {
+			visibletexel.y = 1.0 - visibletexel.y;
+		}
+		if (visibletexel.x >= 0.0 && visibletexel.x <= 1.0 && visibletexel.y >= 0.0 && visibletexel.y <= 1.0) {
+			float visibility = texture2D(s_visibility, visibletexel).r;
+			if (visibility < 0.9) {
+				discard;
+			}
 		}
 	}
 

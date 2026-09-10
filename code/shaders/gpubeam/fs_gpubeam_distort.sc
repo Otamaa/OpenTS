@@ -4,11 +4,14 @@ $input v_texcoord0, v_color0, v_depth
 
 SAMPLER2D(s_depth, 0);
 SAMPLER2D(s_distorttex, 1);
+SAMPLER2D(s_visibility, 3);
 
 // See fs_gpubeam.sc for what each of these carry; identical contract.
 uniform vec4 u_depthParams;
 uniform vec4 u_beamParams;
 uniform vec4 u_beamSheetParams;
+uniform vec4 u_visibilityParams;
+uniform vec4 u_visibilityFlags;
 
 // x = LaserDistortionDisplacement, y/z/w unused.
 uniform vec4 u_distortParams;
@@ -35,6 +38,22 @@ void main()
 		float scenedepth = texture2D(s_depth, depthtexel).r;
 		if (v_depth - 0.0005 >= scenedepth) {
 			discard;
+		}
+	}
+
+	// EXTENSION: same line-of-sight rule as the color pass -- a beam hidden by shroud or
+	// fog shouldn't still visibly warp the scene behind it. See fs_gpubeam.sc's copy of
+	// this block for the reasoning.
+	if (u_visibilityFlags.x > 0.5) {
+		vec2 visibletexel = (gl_FragCoord.xy - u_visibilityParams.xy) * u_visibilityParams.zw;
+		if (u_beamParams.x > 0.5) {
+			visibletexel.y = 1.0 - visibletexel.y;
+		}
+		if (visibletexel.x >= 0.0 && visibletexel.x <= 1.0 && visibletexel.y >= 0.0 && visibletexel.y <= 1.0) {
+			float visibility = texture2D(s_visibility, visibletexel).r;
+			if (visibility < 0.9) {
+				discard;
+			}
 		}
 	}
 

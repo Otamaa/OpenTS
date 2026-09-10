@@ -29,6 +29,7 @@
 #include "alphashp.h"
 #include "anim.h"
 #include "animtype.h"
+#include "bgfxbackend.h"
 #include "building.h"
 #include "builtype.h"
 #include "cell.h"
@@ -69,6 +70,8 @@
 #include "ramp.hh"
 #include "scrspeed.hh"
 
+#include <algorithm>
+#include <cstring>
 #include <utility>
 
 
@@ -1305,6 +1308,12 @@ void Tactical::Render(Surface & surface, bool fullredraw, int drawpass)
 		// lives here rather than inside Draw_All itself.
 		Capture_GPU_Effect_Snapshots();
 
+		// EXTENSION: the shroud/fog visibility mask is game logic state, not a rendering
+		// side effect, so unlike the snapshot above it doesn't actually need to be taken
+		// at this exact point in the draw order -- it's grouped here anyway since this is
+		// where "GPU effects need fresh state for this frame" already lives.
+		Capture_GPU_Visibility_Mask();
+
 		LaserDrawClass::Draw_All();
 
 		for (i = 0; i < CurrentObject.Count(); i++) {
@@ -2206,6 +2215,84 @@ void Tactical::Draw_Shroud(Rect const & area)
 	}
 
 	AlphaShapeClass::Draw_All(area);
+}
+
+
+/// <summary>
+/// EXTENSION: builds and uploads a per-pixel visibility mask covering TacticalRect, cell
+/// by cell, using the exact same cell-to-screen-rect walk Draw_Shroud already does (see
+/// that function's own comments for what each piece of it is doing) -- reused here rather
+/// than reinvented, since it's already the established, working way this class turns a
+/// cell into a screen rectangle. Each cell's rect is filled with a byte value: 0 fully
+/// shrouded, 128 fogged, 255 fully visible, matching what Backend_Upload_Visibility_Snapshot
+/// expects. See its own doc comment in bgfxbackend.h for which GPU effects should be
+/// gated on which threshold.
+/// </summary>
+void Tactical::Capture_GPU_Visibility_Mask(void)
+{
+	if (TacticalRect.Width <= 0 || TacticalRect.Height <= 0 || MainWindow == NULL) {
+		return;
+	}
+
+	int maskwidth = TacticalRect.Width;
+	int maskheight = TacticalRect.Height;
+	unsigned char * mask = new unsigned char[(size_t)maskwidth * maskheight];
+
+	// Defaults every pixel to shrouded; only cells the walk below actually reaches (every
+	// on-map cell overlapping TacticalRect) get anything else written over that.
+	memset(mask, 0, (size_t)maskwidth * maskheight);
+
+	Coord lepton = Coord(Pixel_To_Lepton(Point2D(TacPixelX, TacPixelY)), 0);
+	if (lepton.Y < 0) lepton.Y = 0;
+	if (lepton.X < 0) lepton.X = 0;
+
+	Cell origin = Map[lepton].CellID;
+
+	int ycount = TacticalRect.Height / (ISO_TILE_PIXEL_H / 2) + 17;
+	int xcount = TacticalRect.Width / ISO_TILE_PIXEL_W + 4;
+
+	Cell base(origin.X - 2, origin.Y);
+
+	for (int iy = 0; iy < ycount; iy++) {
+		Cell step(iy / 2, (iy + 1) / 2);
+		Cell cell = base + step;
+
+		for (int ix = xcount; ix > 0; ix--) {
+			if (Map.In_Radar(cell)) {
+				CellClass * cellptr = &Map[cell];
+
+				Coord coord = Coord_Whole(Coord(cell));
+				Point2D pixel;
+				Coord_To_Pixel(coord, pixel);
+				pixel.X += ISO_TILE_PIXEL_W / -2;
+
+				// pixel is already TacticalRect-local (Draw_Shroud adds
+				// TacticalRect.Top_Left() back only when actually drawing onto the real
+				// surface; this mask's own local origin is TacticalRect's top-left, so
+				// that step is skipped here).
+				int left = std::max(0, pixel.X);
+				int top = std::max(0, pixel.Y);
+				int right = std::min(maskwidth, pixel.X + ISO_TILE_PIXEL_W);
+				int bottom = std::min(maskheight, pixel.Y + ISO_TILE_PIXEL_H);
+
+				if (right > left && bottom > top) {
+					unsigned char value = 0;
+					if (cellptr->IsVisible) {
+						value = cellptr->IsFogVisible ? 255 : 128;
+					}
+
+					for (int y = top; y < bottom; y++) {
+						memset(mask + (size_t)y * maskwidth + left, value, (size_t)(right - left));
+					}
+				}
+			}
+			cell += Cell(1, -1);
+		}
+	}
+
+	Backend_Upload_Visibility_Snapshot(mask, maskwidth, maskheight, TacticalRect.X, TacticalRect.Y);
+
+	delete [] mask;
 }
 
 

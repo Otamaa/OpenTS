@@ -203,6 +203,14 @@ class Tactical : public AbstractClass
 		virtual bool Draw_3D_Line(Coord const & coord1, Coord const & coord2, int color, bool write_depth);
 		void Draw_Overlays(Rect const & area);
 		void Draw_Shroud(Rect const & area);
+
+		// EXTENSION: builds and uploads a per-pixel visibility mask (shroud/fog/visible)
+		// GPU effects can be gated by -- particles and beams need current line of sight,
+		// water and weather only need the area to have been explored at all. Cell
+		// iteration mirrors Draw_Shroud's own, so it needs the same private state that
+		// function does, which is why this lives here rather than as a free function.
+		void Capture_GPU_Visibility_Mask(void);
+
 		void Draw_Tiles(Rect const & area, Rect const & cliprect);
 		void Draw_Tile_Shadows(Rect const & area, Rect const & cliprect);
 		void Draw_Tiles(Cell const & cell, Rect const & cliprect);
