@@ -56,6 +56,7 @@
 #include "infantry.h"
 #include "ion.h"
 #include "ionblast.h"
+#include "gpuparticle.h"
 #include "laser.h"
 #include "light.h"
 #include "mono.h"
@@ -354,6 +355,11 @@ void LogicClass::AI(void)
 
 	SpotLightClass::Update_All();
 	LaserDrawClass::Update_All();
+
+	// EXTENSION: ticked here, alongside every other per-frame logic update, so it
+	// naturally respects pause the same way they do -- this whole function simply isn't
+	// called while the game is paused.
+	GPUParticleClass::Update_All();
 	IonStormClass::AI();
 	LightSourceClass::Process_Lighting(6);
 	EMPulseClass::Update_All();

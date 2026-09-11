@@ -238,6 +238,7 @@ bgfx_compile_shaders(
         "${OPENTS_GPUBEAM_SHADER_DIR}/fs_gpubeam.sc"
         "${OPENTS_GPUBEAM_SHADER_DIR}/fs_gpubeam_distort.sc"
         "${OPENTS_GPUBEAM_SHADER_DIR}/fs_anim_overlay.sc"
+        "${OPENTS_GPUBEAM_SHADER_DIR}/fs_particle.sc"
     VARYING_DEF "${OPENTS_GPUBEAM_SHADER_DIR}/varying.def.sc"
     OUTPUT_DIR "${OPENTS_GPUBEAM_SHADER_OUTPUT_DIR}"
     OUT_FILES_VAR OPENTS_GPUBEAM_FRAGMENT_OUTPUTS

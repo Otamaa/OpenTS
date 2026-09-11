@@ -31,6 +31,7 @@
 #include "animtype.h"
 #include "bgfxbackend.h"
 #include "building.h"
+#include "gpuparticle.h"
 #include "builtype.h"
 #include "cell.h"
 #include "convert.h"
@@ -1315,6 +1316,11 @@ void Tactical::Render(Surface & surface, bool fullredraw, int drawpass)
 		Capture_GPU_Visibility_Mask();
 
 		LaserDrawClass::Draw_All();
+
+		// EXTENSION: drawn every render frame regardless of pause -- unlike Update_All
+		// (hooked into LogicClass::AI, in logic.cpp), so the last simulated particle
+		// state stays visible on screen while the game is paused rather than vanishing.
+		GPUParticleClass::Draw_All();
 
 		for (i = 0; i < CurrentObject.Count(); i++) {
 			ObjectClass * object = CurrentObject[i];

@@ -101,6 +101,7 @@
 #include "getcpu.h"
 #include "globals.h"
 #include "goptions.h"
+#include "gpuparticle.h"
 #include "houstype.h"
 #include "incdec.h"
 #include "infantry.h"
@@ -2186,6 +2187,10 @@ bool Read_Scenario_INI(CCINIClass const & ini, bool is_mapgen)
 	}
 
 	RadarEventClass::Clear();
+
+	// EXTENSION: a fresh scenario should start with no leftover particle emitters from
+	// whatever was in play before, same reasoning as clearing RadarEvents here.
+	GPUParticleClass::Clear_All();
 
 	Map.Complete_Radar_Refresh();
 

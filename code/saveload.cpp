@@ -76,6 +76,7 @@
 #include "gamedirs.h"
 #include "globals.h"
 #include "goptions.h"
+#include "gpuparticle.h"
 #include "houstype.h"
 #include "ilinkstm.h"
 #include "infantry.h"
@@ -613,6 +614,11 @@ static bool Put_All(IStream *stream, int save_net)
 		DebugString("\t***** FAILED!\n");
 		return(false);
 	}
+	DebugString("Saving GPU particle emitters\n");
+	if (!GPUParticleClass::Save(stream)) {
+		DebugString("\t***** FAILED!\n");
+		return(false);
+	}
 
 	/*
 	 * A campaign takes its options from the mission. Every other kind is given them at setup, so
@@ -865,6 +871,9 @@ static bool Get_All(IStream *stream, bool save_net)
 		return(false);
 	}
 	if (!RadarEventClass::Load(stream)) {
+		return(false);
+	}
+	if (!GPUParticleClass::Load(stream)) {
 		return(false);
 	}
 

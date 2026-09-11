@@ -116,6 +116,13 @@
 #ifdef OPENTS_BUILD_64BIT
 #include <dxil/fs_anim_overlay.sc.bin.h>
 #endif
+#include <glsl/fs_particle.sc.bin.h>
+#include <essl/fs_particle.sc.bin.h>
+#include <spirv/fs_particle.sc.bin.h>
+#include <dxbc/fs_particle.sc.bin.h>
+#ifdef OPENTS_BUILD_64BIT
+#include <dxil/fs_particle.sc.bin.h>
+#endif
 #include <glsl/fs_distortwarp.sc.bin.h>
 #include <essl/fs_distortwarp.sc.bin.h>
 #include <spirv/fs_distortwarp.sc.bin.h>
@@ -143,6 +150,7 @@ static const bgfx::EmbeddedShader _EmbeddedShaders[] = {
 	BGFX_EMBEDDED_SHADER(fs_gpubeam_distort),
 	BGFX_EMBEDDED_SHADER(fs_distortwarp),
 	BGFX_EMBEDDED_SHADER(fs_anim_overlay),
+	BGFX_EMBEDDED_SHADER(fs_particle),
 	BGFX_EMBEDDED_SHADER_END()
 };
 
@@ -228,6 +236,20 @@ struct BackendGPUBeam {
 	BackendGPUBeamStyle Style;
 };
 static std::vector<BackendGPUBeam> _BeamQueue;
+
+// EXTENSION: GPU particles. Share the beam target/view (VIEW_GPU_BEAM) and this frame's
+// depth/ambient/visibility snapshots rather than owning any of their own -- there's
+// nothing about a particle's occlusion or lighting that differs from a beam's.
+struct BackendGPUParticle {
+	float X, Y, Depth;
+	float Size;
+	unsigned int Color;
+	BackendTextureHandle Texture;
+};
+static std::vector<BackendGPUParticle> _ParticleQueue;
+static bgfx::ProgramHandle _ParticleProgram = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _ParticleTextureSampler = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _ParticleParamsUniform = BGFX_INVALID_HANDLE;
 static bgfx::FrameBufferHandle _GPUBeamTarget = BGFX_INVALID_HANDLE;
 static int _BeamFrameWidth = 0;
 static int _BeamFrameHeight = 0;
@@ -736,6 +758,7 @@ static bool Ensure_Beam_Target(int framewidth, int frameheight)
 static void Discard_Beam_Queue(void)
 {
 	_BeamQueue.clear();
+	_ParticleQueue.clear();
 	_DistortionQueuedThisFrame = false;
 }
 
@@ -792,6 +815,81 @@ static bgfx::TextureHandle Resolve_Loaded_Texture(BackendTextureHandle handle)
 		return BGFX_INVALID_HANDLE;
 	}
 	return(_LoadedTextures[handle]);
+}
+
+
+/// <summary>
+/// Draws every queued GPU particle that uses the given texture (BACKEND_INVALID_TEXTURE
+/// meaning "the plain soft circular falloff", same as any other group) as one batched
+/// draw call: all of them packed into a single transient vertex buffer rather than one
+/// submit per particle, since there can be a lot of these in one frame. depthparams/
+/// visibilityparams/visibilityflags/originflip are Run_GPU_Beam_Composite's own, passed
+/// through unchanged -- a particle's occlusion and lighting test is identical to a
+/// beam's.
+/// </summary>
+static void Submit_Particle_Batch(bgfx::ViewId view, BackendTextureHandle texture, float const * depthparams, float const * visibilityparams, float const * visibilityflags, float originflip)
+{
+	size_t count = 0;
+	for (size_t index = 0; index < _ParticleQueue.size(); index++) {
+		if (_ParticleQueue[index].Texture == texture) {
+			count++;
+		}
+	}
+	if (count == 0) {
+		return;
+	}
+
+	// Capped to whatever the transient buffer pool actually has room for this frame;
+	// particles beyond that are simply skipped rather than failing the whole batch, since
+	// losing a few off-screen-adjacent sparks is far less noticeable than losing every
+	// particle drawn this frame because one oversized batch failed to allocate.
+	uint32_t available = bgfx::getAvailTransientVertexBuffer((uint32_t)(count * 6), _BeamVertexLayout);
+	uint32_t quadstoallocate = available / 6;
+	if (quadstoallocate == 0) {
+		return;
+	}
+
+	bgfx::TransientVertexBuffer buffer;
+	bgfx::allocTransientVertexBuffer(&buffer, quadstoallocate * 6, _BeamVertexLayout);
+	BackendBeamVertex * vertex = (BackendBeamVertex *)buffer.data;
+
+	uint32_t written = 0;
+	for (size_t index = 0; index < _ParticleQueue.size() && written < quadstoallocate; index++) {
+		BackendGPUParticle const & particle = _ParticleQueue[index];
+		if (particle.Texture != texture) {
+			continue;
+		}
+
+		float half = particle.Size * 0.5f;
+		BackendBeamVertex * quad = vertex + (size_t)written * 6;
+		quad[0] = { particle.X - half, particle.Y - half, 0.0f, 0.0f, particle.Color, particle.Depth };
+		quad[1] = { particle.X + half, particle.Y - half, 1.0f, 0.0f, particle.Color, particle.Depth };
+		quad[2] = { particle.X + half, particle.Y + half, 1.0f, 1.0f, particle.Color, particle.Depth };
+		quad[3] = { particle.X - half, particle.Y - half, 0.0f, 0.0f, particle.Color, particle.Depth };
+		quad[4] = { particle.X + half, particle.Y + half, 1.0f, 1.0f, particle.Color, particle.Depth };
+		quad[5] = { particle.X - half, particle.Y + half, 0.0f, 1.0f, particle.Color, particle.Depth };
+		written++;
+	}
+
+	const unsigned int linear = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+	bgfx::TextureHandle resolved = Resolve_Loaded_Texture(texture);
+	float particleparams[4] = { originflip, bgfx::isValid(resolved) ? 1.0f : 0.0f, 0.0f, 0.0f };
+
+	bgfx::setTexture(0, _DepthSampler, _DepthSnapshotTexture, linear);
+	if (visibilityflags[0] > 0.5f) {
+		bgfx::setTexture(1, _VisibilitySampler, _VisibilitySnapshotTexture, linear);
+	}
+	if (bgfx::isValid(resolved)) {
+		bgfx::setTexture(2, _ParticleTextureSampler, resolved, linear);
+	}
+	bgfx::setUniform(_DepthParamsUniform, depthparams);
+	bgfx::setUniform(_VisibilityParamsUniform, visibilityparams);
+	bgfx::setUniform(_VisibilityFlagsUniform, visibilityflags);
+	bgfx::setUniform(_ParticleParamsUniform, particleparams);
+
+	bgfx::setVertexBuffer(0, &buffer, 0, written * 6);
+	bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA);
+	bgfx::submit(view, _ParticleProgram);
 }
 
 
@@ -899,10 +997,34 @@ static bgfx::TextureHandle Run_GPU_Beam_Composite(bgfx::TextureHandle base, bool
 				Submit_Beam_Quad(VIEW_DISTORTION, _GPUBeamDistortProgram, beam);
 			}
 		}
+
+		// EXTENSION: particles, batched per distinct texture (including
+		// BACKEND_INVALID_TEXTURE, the plain soft-falloff group) rather than one submit
+		// per particle -- see Submit_Particle_Batch's own doc comment.
+		if (!_ParticleQueue.empty()) {
+			std::vector<BackendTextureHandle> seen;
+			for (size_t index = 0; index < _ParticleQueue.size(); index++) {
+				BackendTextureHandle texture = _ParticleQueue[index].Texture;
+				bool already = false;
+				for (size_t seenindex = 0; seenindex < seen.size(); seenindex++) {
+					if (seen[seenindex] == texture) {
+						already = true;
+						break;
+					}
+				}
+				if (!already) {
+					seen.push_back(texture);
+				}
+			}
+			for (size_t index = 0; index < seen.size(); index++) {
+				Submit_Particle_Batch(VIEW_GPU_BEAM, seen[index], depthparams, visibilityparams, visibilityflags, originflip);
+			}
+		}
 	}
-	// Without a depth snapshot there is nothing to occlude against; beams already queued
-	// this frame are simply dropped rather than drawn unoccluded on top of everything,
-	// since that would be a more visible wrong answer than not drawing them at all.
+	// Without a depth snapshot there is nothing to occlude against; beams and particles
+	// already queued this frame are simply dropped rather than drawn unoccluded on top of
+	// everything, since that would be a more visible wrong answer than not drawing them
+	// at all.
 
 	_DistortionQueuedThisFrame = any_distortion && _HasDepthSnapshot;
 	return(bgfx::getTexture(_GPUBeamTarget));
@@ -1214,8 +1336,15 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	bgfx::ShaderHandle distortwarpfragment = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "fs_distortwarp");
 	bgfx::ShaderHandle animoverlayfragment = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "fs_anim_overlay");
 
+	// EXTENSION: particles reuse vs_gpubeam (a fresh handle, since beamvertex above is
+	// consumed by _AnimOverlayProgram's own destroyShaders=true) and get their own small
+	// fragment shader.
+	bgfx::ShaderHandle particlevertex = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "vs_gpubeam");
+	bgfx::ShaderHandle particlefragment = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "fs_particle");
+
 	if (!bgfx::isValid(beamvertex) || !bgfx::isValid(beamfragment) || !bgfx::isValid(beamdistortfragment)
-		|| !bgfx::isValid(distortwarpvertex) || !bgfx::isValid(distortwarpfragment) || !bgfx::isValid(animoverlayfragment)) {
+		|| !bgfx::isValid(distortwarpvertex) || !bgfx::isValid(distortwarpfragment) || !bgfx::isValid(animoverlayfragment)
+		|| !bgfx::isValid(particlevertex) || !bgfx::isValid(particlefragment)) {
 		bgfx::shutdown();
 		return(false);
 	}
@@ -1224,6 +1353,7 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	_GPUBeamDistortProgram = bgfx::createProgram(beamvertex, beamdistortfragment, false);
 	_AnimOverlayProgram = bgfx::createProgram(beamvertex, animoverlayfragment, true);
 	_DistortWarpProgram = bgfx::createProgram(distortwarpvertex, distortwarpfragment, true);
+	_ParticleProgram = bgfx::createProgram(particlevertex, particlefragment, true);
 	bgfx::destroy(beamfragment);
 	bgfx::destroy(beamdistortfragment);
 
@@ -1238,8 +1368,11 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	_BeamTextureSampler = bgfx::createUniform("s_beamtex", bgfx::UniformType::Sampler);
 	_DistortSampler = bgfx::createUniform("s_distorttex", bgfx::UniformType::Sampler);
 	_DistortParamsUniform = bgfx::createUniform("u_distortParams", bgfx::UniformType::Vec4);
+	_ParticleTextureSampler = bgfx::createUniform("s_particletex", bgfx::UniformType::Sampler);
+	_ParticleParamsUniform = bgfx::createUniform("u_particleParams", bgfx::UniformType::Vec4);
 
 	if (!bgfx::isValid(_GPUBeamProgram) || !bgfx::isValid(_GPUBeamDistortProgram) || !bgfx::isValid(_AnimOverlayProgram) || !bgfx::isValid(_DistortWarpProgram)
+		|| !bgfx::isValid(_ParticleProgram) || !bgfx::isValid(_ParticleTextureSampler) || !bgfx::isValid(_ParticleParamsUniform)
 		|| !bgfx::isValid(_DepthSampler) || !bgfx::isValid(_AmbientSampler) || !bgfx::isValid(_VisibilitySampler) || !bgfx::isValid(_VisibilityParamsUniform) || !bgfx::isValid(_VisibilityFlagsUniform)
 		|| !bgfx::isValid(_DepthParamsUniform) || !bgfx::isValid(_BeamParamsUniform)
 		|| !bgfx::isValid(_BeamSheetParamsUniform) || !bgfx::isValid(_BeamTextureSampler)
@@ -1331,6 +1464,18 @@ void Backend_Shutdown(void)
 	if (bgfx::isValid(_DistortWarpProgram)) {
 		bgfx::destroy(_DistortWarpProgram);
 		_DistortWarpProgram = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_ParticleProgram)) {
+		bgfx::destroy(_ParticleProgram);
+		_ParticleProgram = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_ParticleTextureSampler)) {
+		bgfx::destroy(_ParticleTextureSampler);
+		_ParticleTextureSampler = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_ParticleParamsUniform)) {
+		bgfx::destroy(_ParticleParamsUniform);
+		_ParticleParamsUniform = BGFX_INVALID_HANDLE;
 	}
 	if (bgfx::isValid(_DepthSampler)) {
 		bgfx::destroy(_DepthSampler);
@@ -1538,7 +1683,7 @@ void Backend_Present(void const * pixels, int pitch, int destx, int desty, int d
 	// EXTENSION: GPU beams composite onto the base frame first, since Run_GPU_Beam_Composite
 	// needs to know what came before it was the plain frame texture rather than an earlier
 	// stage's target, for its own origin correction.
-	if (!_BeamQueue.empty() && Ensure_Beam_Target(_FrameWidth, _FrameHeight)) {
+	if ((!_BeamQueue.empty() || !_ParticleQueue.empty()) && Ensure_Beam_Target(_FrameWidth, _FrameHeight)) {
 		source = Run_GPU_Beam_Composite(source, source_from_target);
 		source_from_target = true;
 
@@ -1845,6 +1990,27 @@ void Backend_Queue_GPU_Beam(float startx, float starty, float startdepth, float 
 	beam.Color = color;
 	beam.Style = style;
 	_BeamQueue.push_back(beam);
+}
+
+
+/// <summary>
+/// Queues one GPU particle for the next Backend_Present call. See the declaration in
+/// bgfxbackend.h for what each parameter means.
+/// </summary>
+void Backend_Queue_GPU_Particle(float x, float y, float depth, float size, unsigned int color, BackendTextureHandle texture)
+{
+	if (!_Initialized || size <= 0.0f) {
+		return;
+	}
+
+	BackendGPUParticle particle;
+	particle.X = x;
+	particle.Y = y;
+	particle.Depth = depth * BEAM_DEPTH_SCALE;
+	particle.Size = size;
+	particle.Color = color;
+	particle.Texture = texture;
+	_ParticleQueue.push_back(particle);
 }
 
 

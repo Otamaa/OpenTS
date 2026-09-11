@@ -222,3 +222,18 @@ struct BackendGPUBeamStyle {
 // which is simpler but means the warp cannot currently extend past where the beam itself
 // is drawn.
 void Backend_Queue_GPU_Beam(float startx, float starty, float startdepth, float endx, float endy, float enddepth, float width, unsigned int color, BackendGPUBeamStyle const & style);
+
+
+// EXTENSION: queues one GPU particle quad -- a small billboard, always facing the camera
+// since this is a 2D isometric renderer, not a beam or a sprite sheet -- drawn in the
+// frame's own pixel space after the depth/ambient/visibility snapshots (if any) are
+// current for this frame. x/y is the particle's center; depth is in the same
+// scroll-corrected units Backend_Queue_GPU_Beam's own start/end depth use; size is the
+// quad's on-screen width and height in pixels; color tints it, 0xAABBGGRR with the alpha
+// channel scaling opacity. texture is BACKEND_INVALID_TEXTURE for a plain soft circular
+// falloff (the common case for sparks, embers, smoke puffs), or a loaded texture to draw
+// instead. Gated on full line-of-sight the same way a beam is -- shroud or fog hides a
+// particle exactly like it hides a unit. A particle queued with no depth snapshot
+// uploaded this frame draws unoccluded, and with no visibility snapshot draws regardless
+// of shroud/fog, matching every other GPU effect's fail-open choice.
+void Backend_Queue_GPU_Particle(float x, float y, float depth, float size, unsigned int color, BackendTextureHandle texture);
