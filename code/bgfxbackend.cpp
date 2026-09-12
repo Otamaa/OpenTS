@@ -130,6 +130,13 @@
 #ifdef OPENTS_BUILD_64BIT
 #include <dxil/fs_distortwarp.sc.bin.h>
 #endif
+#include <glsl/fs_atmosphere.sc.bin.h>
+#include <essl/fs_atmosphere.sc.bin.h>
+#include <spirv/fs_atmosphere.sc.bin.h>
+#include <dxbc/fs_atmosphere.sc.bin.h>
+#ifdef OPENTS_BUILD_64BIT
+#include <dxil/fs_atmosphere.sc.bin.h>
+#endif
 
 #include <algorithm>
 #include <cstdio>
@@ -149,6 +156,7 @@ static const bgfx::EmbeddedShader _EmbeddedShaders[] = {
 	BGFX_EMBEDDED_SHADER(fs_gpubeam),
 	BGFX_EMBEDDED_SHADER(fs_gpubeam_distort),
 	BGFX_EMBEDDED_SHADER(fs_distortwarp),
+	BGFX_EMBEDDED_SHADER(fs_atmosphere),
 	BGFX_EMBEDDED_SHADER(fs_anim_overlay),
 	BGFX_EMBEDDED_SHADER(fs_particle),
 	BGFX_EMBEDDED_SHADER_END()
@@ -159,19 +167,22 @@ static const bgfx::EmbeddedShader _EmbeddedShaders[] = {
 // since they occlude against the software scene's own depth; any distortion-enabled beam
 // also writes a warp vector in the same pass, consumed immediately after by the warp view;
 // GPU overlay quads composite on top of that, since they draw over everything
-// unconditionally; the bloom chain has to finish before the pixel art magnify pass samples
-// its result, which in turn has to finish before the present pass samples whichever of the
-// earlier stages ran last.
+// unconditionally; water/weather tint the whole scene after that, so their light affects
+// beams, particles, and overlay anims too, not just the terrain underneath them; the
+// bloom chain has to finish before the pixel art magnify pass samples its result, which in
+// turn has to finish before the present pass samples whichever of the earlier stages ran
+// last.
 static const bgfx::ViewId VIEW_GPU_BEAM = 0;
 static const bgfx::ViewId VIEW_DISTORTION = 1;
 static const bgfx::ViewId VIEW_DISTORTION_WARP = 2;
 static const bgfx::ViewId VIEW_ANIM_OVERLAY = 3;
-static const bgfx::ViewId VIEW_BLOOM_BRIGHT = 4;
-static const bgfx::ViewId VIEW_BLOOM_BLUR_H = 5;
-static const bgfx::ViewId VIEW_BLOOM_BLUR_V = 6;
-static const bgfx::ViewId VIEW_BLOOM_COMBINE = 7;
-static const bgfx::ViewId VIEW_PRESCALE = 8;
-static const bgfx::ViewId VIEW_PRESENT = 9;
+static const bgfx::ViewId VIEW_ATMOSPHERE = 4;
+static const bgfx::ViewId VIEW_BLOOM_BRIGHT = 5;
+static const bgfx::ViewId VIEW_BLOOM_BLUR_H = 6;
+static const bgfx::ViewId VIEW_BLOOM_BLUR_V = 7;
+static const bgfx::ViewId VIEW_BLOOM_COMBINE = 8;
+static const bgfx::ViewId VIEW_PRESCALE = 9;
+static const bgfx::ViewId VIEW_PRESENT = 10;
 
 
 static bool _Initialized = false;
@@ -224,6 +235,24 @@ static std::vector<BackendOverlayQuad> _OverlayQueue;
 static bgfx::FrameBufferHandle _AnimOverlayTarget = BGFX_INVALID_HANDLE;
 static int _OverlayFrameWidth = 0;
 static int _OverlayFrameHeight = 0;
+
+// EXTENSION: weather/water. Config is set once a frame by Backend_Set_Atmosphere and
+// consumed by Run_Atmosphere_Pass; the target is its own, separate from every other
+// postfx target, since the pass both reads and writes a full-screen composite and can't
+// do that to the same texture at once.
+static BackendWeatherConfig _WeatherConfig;
+static BackendWaterConfig _WaterConfig;
+static bgfx::FrameBufferHandle _AtmosphereTarget = BGFX_INVALID_HANDLE;
+static int _AtmosphereFrameWidth = 0;
+static int _AtmosphereFrameHeight = 0;
+static bgfx::ProgramHandle _AtmosphereProgram = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _WeatherSampler = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _WaterSampler = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _AtmosphereFlagsUniform = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _WeatherParamsUniform = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _WaterParamsUniform = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _WaterTilingUniform = BGFX_INVALID_HANDLE;
+static bgfx::UniformHandle _WaterFogColorUniform = BGFX_INVALID_HANDLE;
 
 // EXTENSION: depth-tested GPU beams (see Backend_Queue_GPU_Beam). Unlike overlay quads
 // these carry no texture of their own; the beam's look is entirely procedural, driven by
@@ -805,20 +834,6 @@ static void Submit_Beam_Quad(bgfx::ViewId view, bgfx::ProgramHandle program, Bac
 
 
 /// <summary>
-/// Looks a texture handle up in the Backend_Load_Texture cache by its BackendTextureHandle
-/// index, returning an invalid bgfx handle for BACKEND_INVALID_TEXTURE or an out-of-range
-/// one rather than letting a stale handle from a different renderer instance read garbage.
-/// </summary>
-static bgfx::TextureHandle Resolve_Loaded_Texture(BackendTextureHandle handle)
-{
-	if (handle == BACKEND_INVALID_TEXTURE || (size_t)handle >= _LoadedTextures.size()) {
-		return BGFX_INVALID_HANDLE;
-	}
-	return(_LoadedTextures[handle]);
-}
-
-
-/// <summary>
 /// Draws every queued GPU particle that uses the given texture (BACKEND_INVALID_TEXTURE
 /// meaning "the plain soft circular falloff", same as any other group) as one batched
 /// draw call: all of them packed into a single transient vertex buffer rather than one
@@ -890,6 +905,20 @@ static void Submit_Particle_Batch(bgfx::ViewId view, BackendTextureHandle textur
 	bgfx::setVertexBuffer(0, &buffer, 0, written * 6);
 	bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA);
 	bgfx::submit(view, _ParticleProgram);
+}
+
+
+/// <summary>
+/// Looks a texture handle up in the Backend_Load_Texture cache by its BackendTextureHandle
+/// index, returning an invalid bgfx handle for BACKEND_INVALID_TEXTURE or an out-of-range
+/// one rather than letting a stale handle from a different renderer instance read garbage.
+/// </summary>
+static bgfx::TextureHandle Resolve_Loaded_Texture(BackendTextureHandle handle)
+{
+	if (handle == BACKEND_INVALID_TEXTURE || (size_t)handle >= _LoadedTextures.size()) {
+		return BGFX_INVALID_HANDLE;
+	}
+	return(_LoadedTextures[handle]);
 }
 
 
@@ -1153,6 +1182,125 @@ static bgfx::TextureHandle Run_Overlay_Composite(bgfx::TextureHandle base, bool 
 
 
 /// <summary>
+/// Discards the atmosphere pass's output target.
+/// </summary>
+static void Destroy_Atmosphere_Target(void)
+{
+	if (bgfx::isValid(_AtmosphereTarget)) {
+		bgfx::destroy(_AtmosphereTarget);
+		_AtmosphereTarget = BGFX_INVALID_HANDLE;
+	}
+	_AtmosphereFrameWidth = 0;
+	_AtmosphereFrameHeight = 0;
+}
+
+
+/// <summary>
+/// Makes sure the atmosphere pass's output target is sized for the given frame.
+/// </summary>
+/// <returns>bool; Is the target ready to render into?</returns>
+static bool Ensure_Atmosphere_Target(int framewidth, int frameheight)
+{
+	if (bgfx::isValid(_AtmosphereTarget) && _AtmosphereFrameWidth == framewidth && _AtmosphereFrameHeight == frameheight) {
+		return(true);
+	}
+
+	Destroy_Atmosphere_Target();
+
+	const bgfx::Caps * caps = bgfx::getCaps();
+	if (framewidth <= 0 || frameheight <= 0
+		|| framewidth > caps->limits.maxTextureSize || frameheight > caps->limits.maxTextureSize) {
+		return(false);
+	}
+
+	_AtmosphereTarget = bgfx::createFrameBuffer((uint16_t)framewidth, (uint16_t)frameheight, bgfx::TextureFormat::BGRA8, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+	if (!bgfx::isValid(_AtmosphereTarget)) {
+		return(false);
+	}
+
+	_AtmosphereFrameWidth = framewidth;
+	_AtmosphereFrameHeight = frameheight;
+	return(true);
+}
+
+
+/// <summary>
+/// Tints the given base texture with this frame's weather/water configuration (see
+/// Backend_Set_Atmosphere) and returns the result. Called only when at least one of the
+/// two is actually enabled; Backend_Present reads straight from base otherwise.
+/// </summary>
+/// <param name="base">Whatever stage last produced -- the overlay composite, most
+/// likely, since this runs immediately after it.</param>
+/// <param name="baseistarget">See Run_Bloom_Chain.</param>
+static bgfx::TextureHandle Run_Atmosphere_Pass(bgfx::TextureHandle base, bool baseistarget)
+{
+	const unsigned int linear = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+	const bool baseflip = baseistarget && bgfx::getCaps()->originBottomLeft;
+	const bool originflip = bgfx::getCaps()->originBottomLeft;
+
+	bgfx::setViewFrameBuffer(VIEW_ATMOSPHERE, _AtmosphereTarget);
+	Set_View_Transform(VIEW_ATMOSPHERE, _FrameWidth, _FrameHeight);
+
+	float visibilityparams[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	bool hasvisibility = _HasVisibilitySnapshot && bgfx::isValid(_VisibilitySnapshotTexture);
+	if (hasvisibility) {
+		visibilityparams[0] = (float)_VisibilitySnapshotOriginX;
+		visibilityparams[1] = (float)_VisibilitySnapshotOriginY;
+		visibilityparams[2] = 1.0f / (float)_VisibilitySnapshotWidth;
+		visibilityparams[3] = 1.0f / (float)_VisibilitySnapshotHeight;
+	}
+
+	float atmosphereflags[4] = {
+		originflip ? 1.0f : 0.0f,
+		_WeatherConfig.Enabled ? 1.0f : 0.0f,
+		_WaterConfig.Enabled ? 1.0f : 0.0f,
+		hasvisibility ? 1.0f : 0.0f
+	};
+	float weatherparams[4] = { _WeatherConfig.ScrollX, _WeatherConfig.ScrollY, _WeatherConfig.Magnification, _WeatherConfig.Intensity };
+	float waterparams[4] = { _WaterConfig.ScrollX, _WaterConfig.ScrollY, _WaterConfig.Frame, _WaterConfig.Intensity };
+	float watertiling[4] = { _WaterConfig.TilingX, _WaterConfig.TilingY, 0.0f, 0.0f };
+	float waterfog[4] = {
+		(float)((_WaterConfig.FogColor >> 0) & 0xFF) / 255.0f,
+		(float)((_WaterConfig.FogColor >> 8) & 0xFF) / 255.0f,
+		(float)((_WaterConfig.FogColor >> 16) & 0xFF) / 255.0f,
+		(float)((_WaterConfig.FogColor >> 24) & 0xFF) / 255.0f
+	};
+
+	bgfx::setTexture(0, _TextureSampler, base, linear);
+	if (hasvisibility) {
+		bgfx::setTexture(1, _VisibilitySampler, _VisibilitySnapshotTexture, linear);
+	}
+	if (_WeatherConfig.Enabled) {
+		bgfx::TextureHandle weathertexture = Resolve_Loaded_Texture(_WeatherConfig.Texture);
+		if (bgfx::isValid(weathertexture)) {
+			bgfx::setTexture(2, _WeatherSampler, weathertexture, BGFX_SAMPLER_NONE);
+		} else {
+			atmosphereflags[1] = 0.0f;
+		}
+	}
+	if (_WaterConfig.Enabled) {
+		bgfx::TextureHandle watertexture = Resolve_Loaded_Texture(_WaterConfig.Texture);
+		if (bgfx::isValid(watertexture)) {
+			bgfx::setTexture(3, _WaterSampler, watertexture, BGFX_SAMPLER_NONE);
+		} else {
+			atmosphereflags[2] = 0.0f;
+		}
+	}
+
+	bgfx::setUniform(_VisibilityParamsUniform, visibilityparams);
+	bgfx::setUniform(_AtmosphereFlagsUniform, atmosphereflags);
+	bgfx::setUniform(_WeatherParamsUniform, weatherparams);
+	bgfx::setUniform(_WaterParamsUniform, waterparams);
+	bgfx::setUniform(_WaterTilingUniform, watertiling);
+	bgfx::setUniform(_WaterFogColorUniform, waterfog);
+
+	Submit_Quad(VIEW_ATMOSPHERE, _AtmosphereProgram, 0.0f, 0.0f, (float)_FrameWidth, (float)_FrameHeight, baseflip);
+
+	return(bgfx::getTexture(_AtmosphereTarget));
+}
+
+
+/// <summary>
 /// Runs the bloom chain over the given base texture and returns the resulting texture.
 /// </summary>
 /// <param name="base">Either the frame texture or the overlay composite, whichever the
@@ -1342,9 +1490,16 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	bgfx::ShaderHandle particlevertex = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "vs_gpubeam");
 	bgfx::ShaderHandle particlefragment = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "fs_particle");
 
+	// EXTENSION: the atmosphere (weather/water) pass reuses vs_postfx, again via its own
+	// fresh handle since distortwarpvertex above is consumed by _DistortWarpProgram's own
+	// destroyShaders=true.
+	bgfx::ShaderHandle atmospherevertex = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "vs_postfx");
+	bgfx::ShaderHandle atmospherefragment = bgfx::createEmbeddedShader(_EmbeddedShaders, type, "fs_atmosphere");
+
 	if (!bgfx::isValid(beamvertex) || !bgfx::isValid(beamfragment) || !bgfx::isValid(beamdistortfragment)
 		|| !bgfx::isValid(distortwarpvertex) || !bgfx::isValid(distortwarpfragment) || !bgfx::isValid(animoverlayfragment)
-		|| !bgfx::isValid(particlevertex) || !bgfx::isValid(particlefragment)) {
+		|| !bgfx::isValid(particlevertex) || !bgfx::isValid(particlefragment)
+		|| !bgfx::isValid(atmospherevertex) || !bgfx::isValid(atmospherefragment)) {
 		bgfx::shutdown();
 		return(false);
 	}
@@ -1354,6 +1509,7 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	_AnimOverlayProgram = bgfx::createProgram(beamvertex, animoverlayfragment, true);
 	_DistortWarpProgram = bgfx::createProgram(distortwarpvertex, distortwarpfragment, true);
 	_ParticleProgram = bgfx::createProgram(particlevertex, particlefragment, true);
+	_AtmosphereProgram = bgfx::createProgram(atmospherevertex, atmospherefragment, true);
 	bgfx::destroy(beamfragment);
 	bgfx::destroy(beamdistortfragment);
 
@@ -1370,9 +1526,19 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 	_DistortParamsUniform = bgfx::createUniform("u_distortParams", bgfx::UniformType::Vec4);
 	_ParticleTextureSampler = bgfx::createUniform("s_particletex", bgfx::UniformType::Sampler);
 	_ParticleParamsUniform = bgfx::createUniform("u_particleParams", bgfx::UniformType::Vec4);
+	_WeatherSampler = bgfx::createUniform("s_weathertex", bgfx::UniformType::Sampler);
+	_WaterSampler = bgfx::createUniform("s_watertex", bgfx::UniformType::Sampler);
+	_AtmosphereFlagsUniform = bgfx::createUniform("u_atmosphereFlags", bgfx::UniformType::Vec4);
+	_WeatherParamsUniform = bgfx::createUniform("u_weatherParams", bgfx::UniformType::Vec4);
+	_WaterParamsUniform = bgfx::createUniform("u_waterParams", bgfx::UniformType::Vec4);
+	_WaterTilingUniform = bgfx::createUniform("u_waterTiling", bgfx::UniformType::Vec4);
+	_WaterFogColorUniform = bgfx::createUniform("u_waterFogColor", bgfx::UniformType::Vec4);
 
 	if (!bgfx::isValid(_GPUBeamProgram) || !bgfx::isValid(_GPUBeamDistortProgram) || !bgfx::isValid(_AnimOverlayProgram) || !bgfx::isValid(_DistortWarpProgram)
 		|| !bgfx::isValid(_ParticleProgram) || !bgfx::isValid(_ParticleTextureSampler) || !bgfx::isValid(_ParticleParamsUniform)
+		|| !bgfx::isValid(_AtmosphereProgram) || !bgfx::isValid(_WeatherSampler) || !bgfx::isValid(_WaterSampler)
+		|| !bgfx::isValid(_AtmosphereFlagsUniform) || !bgfx::isValid(_WeatherParamsUniform) || !bgfx::isValid(_WaterParamsUniform)
+		|| !bgfx::isValid(_WaterTilingUniform) || !bgfx::isValid(_WaterFogColorUniform)
 		|| !bgfx::isValid(_DepthSampler) || !bgfx::isValid(_AmbientSampler) || !bgfx::isValid(_VisibilitySampler) || !bgfx::isValid(_VisibilityParamsUniform) || !bgfx::isValid(_VisibilityFlagsUniform)
 		|| !bgfx::isValid(_DepthParamsUniform) || !bgfx::isValid(_BeamParamsUniform)
 		|| !bgfx::isValid(_BeamSheetParamsUniform) || !bgfx::isValid(_BeamTextureSampler)
@@ -1476,6 +1642,42 @@ void Backend_Shutdown(void)
 	if (bgfx::isValid(_ParticleParamsUniform)) {
 		bgfx::destroy(_ParticleParamsUniform);
 		_ParticleParamsUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_AtmosphereProgram)) {
+		bgfx::destroy(_AtmosphereProgram);
+		_AtmosphereProgram = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_WeatherSampler)) {
+		bgfx::destroy(_WeatherSampler);
+		_WeatherSampler = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_WaterSampler)) {
+		bgfx::destroy(_WaterSampler);
+		_WaterSampler = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_AtmosphereFlagsUniform)) {
+		bgfx::destroy(_AtmosphereFlagsUniform);
+		_AtmosphereFlagsUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_WeatherParamsUniform)) {
+		bgfx::destroy(_WeatherParamsUniform);
+		_WeatherParamsUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_WaterParamsUniform)) {
+		bgfx::destroy(_WaterParamsUniform);
+		_WaterParamsUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_WaterTilingUniform)) {
+		bgfx::destroy(_WaterTilingUniform);
+		_WaterTilingUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_WaterFogColorUniform)) {
+		bgfx::destroy(_WaterFogColorUniform);
+		_WaterFogColorUniform = BGFX_INVALID_HANDLE;
+	}
+	if (bgfx::isValid(_AtmosphereTarget)) {
+		bgfx::destroy(_AtmosphereTarget);
+		_AtmosphereTarget = BGFX_INVALID_HANDLE;
 	}
 	if (bgfx::isValid(_DepthSampler)) {
 		bgfx::destroy(_DepthSampler);
@@ -1702,6 +1904,14 @@ void Backend_Present(void const * pixels, int pitch, int destx, int desty, int d
 	// when nothing queued a quad this frame.
 	if (!_OverlayQueue.empty() && Ensure_Overlay_Target(_FrameWidth, _FrameHeight)) {
 		source = Run_Overlay_Composite(source, source_from_target);
+		source_from_target = true;
+	}
+
+	// EXTENSION: weather/water tint everything composited so far -- terrain, beams,
+	// particles, and overlay anims alike -- before bloom picks up the result. Skipped
+	// entirely, at zero cost, when neither is enabled.
+	if ((_WeatherConfig.Enabled || _WaterConfig.Enabled) && Ensure_Atmosphere_Target(_FrameWidth, _FrameHeight)) {
+		source = Run_Atmosphere_Pass(source, source_from_target);
 		source_from_target = true;
 	}
 
@@ -2011,6 +2221,16 @@ void Backend_Queue_GPU_Particle(float x, float y, float depth, float size, unsig
 	particle.Color = color;
 	particle.Texture = texture;
 	_ParticleQueue.push_back(particle);
+}
+
+
+/// <summary>
+/// Sets this frame's weather/water configuration. See the declaration in bgfxbackend.h.
+/// </summary>
+void Backend_Set_Atmosphere(BackendWeatherConfig const & weather, BackendWaterConfig const & water)
+{
+	_WeatherConfig = weather;
+	_WaterConfig = water;
 }
 
 

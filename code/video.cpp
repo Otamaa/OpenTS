@@ -17,6 +17,8 @@
 
 #include "_surface.h"
 #include "bgfxbackend.h"
+#include "ccfile.h"
+#include "data.h"
 #include "dbgprint.h"
 #include "dsurface.h"
 #include "globals.h"
@@ -25,6 +27,8 @@
 #include "surface.h"
 #include "wincursor.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 
@@ -142,6 +146,90 @@ static BackendPostFX Backend_Post_FX(void)
 		default:
 			return(BACKEND_POSTFX_NONE);
 	}
+}
+
+
+/// <summary>
+/// Loads (or reuses a cache hit for) a weather/water texture by filename. Kept as a
+/// static so the caller doesn't need to track whether the filename actually changed
+/// since the last call -- Backend_Load_Texture's own cache already makes a repeated call
+/// with the same filename cheap, but this also avoids re-opening the file at all when
+/// nothing changed.
+/// </summary>
+static BackendTextureHandle Load_Atmosphere_Texture(TStringID<64> const & filename, TStringID<64> & lastloaded, BackendTextureHandle & cached)
+{
+	if (filename == lastloaded) {
+		return(cached);
+	}
+
+	lastloaded = filename;
+	cached = BACKEND_INVALID_TEXTURE;
+
+	if (filename.empty()) {
+		return(cached);
+	}
+
+	CCFileClass file((char const *)filename);
+	if (!file.Is_Available()) {
+		return(cached);
+	}
+
+	int size = file.Size();
+	void * data = Load_Alloc_Data(file);
+	if (data == NULL || size <= 0) {
+		delete [] (char *)data;
+		return(cached);
+	}
+
+	cached = Backend_Load_Texture((char const *)filename, data, (unsigned int)size);
+	delete [] (char *)data;
+	return(cached);
+}
+
+
+/// <summary>
+/// Builds this frame's weather/water configuration from Options and sends it to the
+/// renderer. Scroll offsets and the water animation frame are derived from the game's
+/// own logic Frame counter rather than a separately tracked clock, so both effects
+/// scroll and animate in step with everything else game logic drives -- including
+/// freezing while the game is paused, since Frame itself does the same.
+/// </summary>
+static void Apply_Atmosphere_Options(void)
+{
+	static TStringID<64> _LastWeatherFilename;
+	static BackendTextureHandle _WeatherTextureHandle = BACKEND_INVALID_TEXTURE;
+	static TStringID<64> _LastWaterFilename;
+	static BackendTextureHandle _WaterTextureHandle = BACKEND_INVALID_TEXTURE;
+
+	BackendWeatherConfig weather;
+	weather.Enabled = Options.IsWeather;
+	if (weather.Enabled) {
+		weather.Texture = Load_Atmosphere_Texture(Options.WeatherTexture, _LastWeatherFilename, _WeatherTextureHandle);
+		float scrollx = (float)Frame * Options.WeatherSpeedX;
+		float scrolly = (float)Frame * Options.WeatherSpeedY;
+		weather.ScrollX = scrollx - floorf(scrollx);
+		weather.ScrollY = scrolly - floorf(scrolly);
+		weather.Magnification = Options.WeatherMagnification;
+		weather.Intensity = Options.WeatherIntensity;
+	}
+
+	BackendWaterConfig water;
+	water.Enabled = Options.IsWater;
+	if (water.Enabled) {
+		water.Texture = Load_Atmosphere_Texture(Options.WaterTexture, _LastWaterFilename, _WaterTextureHandle);
+		float scrollx = (float)Frame * Options.WaterSpeedX;
+		float scrolly = (float)Frame * Options.WaterSpeedY;
+		water.ScrollX = scrollx - floorf(scrollx);
+		water.ScrollY = scrolly - floorf(scrolly);
+		water.TilingX = Options.WaterTilingX;
+		water.TilingY = Options.WaterTilingY;
+		int rawframe = (Frame / std::max(1, Options.WaterAnimInterval)) % 32;
+		water.Frame = (float)rawframe / 32.0f;
+		water.Intensity = Options.WaterIntensity;
+		water.FogColor = (Options.WaterFogColor & 0x00FFFFFF) | (((unsigned int)(Options.WaterFogAmount * 255.0f) & 0xFF) << 24);
+	}
+
+	Backend_Set_Atmosphere(weather, water);
 }
 
 
@@ -289,6 +377,7 @@ void Video_Present(void)
 	}
 
 	_Presenting = true;
+	Apply_Atmosphere_Options();
 	Backend_Present(pixels, surface->Stride(), _ScaleInfo.DestX, _ScaleInfo.DestY, _ScaleInfo.DestWidth, _ScaleInfo.DestHeight, Backend_Scale_Mode(),
 		Backend_Post_FX(), Options.BloomThreshold, Options.BloomIntensity);
 	_Presenting = false;

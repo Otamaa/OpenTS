@@ -202,6 +202,7 @@ bgfx_compile_shaders(
         "${OPENTS_POSTFX_SHADER_DIR}/fs_bloom_blur.sc"
         "${OPENTS_POSTFX_SHADER_DIR}/fs_bloom_combine.sc"
         "${OPENTS_POSTFX_SHADER_DIR}/fs_distortwarp.sc"
+        "${OPENTS_POSTFX_SHADER_DIR}/fs_atmosphere.sc"
     VARYING_DEF "${OPENTS_POSTFX_SHADER_DIR}/varying.def.sc"
     OUTPUT_DIR "${OPENTS_POSTFX_SHADER_OUTPUT_DIR}"
     OUT_FILES_VAR OPENTS_POSTFX_FRAGMENT_OUTPUTS

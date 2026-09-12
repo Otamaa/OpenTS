@@ -137,6 +137,22 @@ OptionsClass::OptionsClass(void) :
 	PostFX(VIDEO_POSTFX_NONE),
 	BloomThreshold(0.8f),
 	BloomIntensity(0.6f),
+	IsWeather(false),
+	WeatherTexture(),
+	WeatherSpeedX(0.01f),
+	WeatherSpeedY(0.005f),
+	WeatherMagnification(1.0f),
+	WeatherIntensity(0.4f),
+	IsWater(false),
+	WaterTexture(),
+	WaterSpeedX(0.01f),
+	WaterSpeedY(0.006f),
+	WaterTilingX(1.0f),
+	WaterTilingY(1.0f),
+	WaterAnimInterval(2),
+	WaterIntensity(0.35f),
+	WaterFogColor(0xFF806040),
+	WaterFogAmount(0.3f),
 	IntegerScaling(false),
 	VSync(false),
 	Renderer(0),
@@ -461,6 +477,24 @@ void OptionsClass::Load_Settings(void)
 	PostFX = PostFX_From_Name(postfxname, PostFX);
 	BloomThreshold = ConfigINI.Get_Float("Video", "BloomThreshold", BloomThreshold);
 	BloomIntensity = ConfigINI.Get_Float("Video", "BloomIntensity", BloomIntensity);
+
+	IsWeather = ConfigINI.Get_Bool("Video", "Weather", IsWeather);
+	ConfigINI.Get_String("Video", "WeatherTexture", WeatherTexture);
+	WeatherSpeedX = ConfigINI.Get_Float("Video", "WeatherSpeedX", WeatherSpeedX);
+	WeatherSpeedY = ConfigINI.Get_Float("Video", "WeatherSpeedY", WeatherSpeedY);
+	WeatherMagnification = ConfigINI.Get_Float("Video", "WeatherMagnification", WeatherMagnification);
+	WeatherIntensity = ConfigINI.Get_Float("Video", "WeatherIntensity", WeatherIntensity);
+
+	IsWater = ConfigINI.Get_Bool("Video", "Water", IsWater);
+	ConfigINI.Get_String("Video", "WaterTexture", WaterTexture);
+	WaterSpeedX = ConfigINI.Get_Float("Video", "WaterSpeedX", WaterSpeedX);
+	WaterSpeedY = ConfigINI.Get_Float("Video", "WaterSpeedY", WaterSpeedY);
+	WaterTilingX = ConfigINI.Get_Float("Video", "WaterTilingX", WaterTilingX);
+	WaterTilingY = ConfigINI.Get_Float("Video", "WaterTilingY", WaterTilingY);
+	WaterAnimInterval = ConfigINI.Get_Int("Video", "WaterAnimInterval", WaterAnimInterval);
+	WaterIntensity = ConfigINI.Get_Float("Video", "WaterIntensity", WaterIntensity);
+	WaterFogColor = (unsigned int)ConfigINI.Get_Int("Video", "WaterFogColor", (int)WaterFogColor);
+	WaterFogAmount = ConfigINI.Get_Float("Video", "WaterFogAmount", WaterFogAmount);
 	DebugString("PostFX is %d (threshold %f, intensity %f)\n", PostFX, BloomThreshold, BloomIntensity);
 
 	CursorScale = ConfigINI.Get_Int("Video", "CursorScale", CursorScale);
@@ -530,6 +564,24 @@ void OptionsClass::Save_Settings (void)
 	ConfigINI.Put_String("Video", "PostFX", (char *)PostFX_Name(PostFX));
 	ConfigINI.Put_Float("Video", "BloomThreshold", BloomThreshold);
 	ConfigINI.Put_Float("Video", "BloomIntensity", BloomIntensity);
+
+	ConfigINI.Put_Bool("Video", "Weather", IsWeather);
+	ConfigINI.Put_String("Video", "WeatherTexture", WeatherTexture.c_str());
+	ConfigINI.Put_Float("Video", "WeatherSpeedX", WeatherSpeedX);
+	ConfigINI.Put_Float("Video", "WeatherSpeedY", WeatherSpeedY);
+	ConfigINI.Put_Float("Video", "WeatherMagnification", WeatherMagnification);
+	ConfigINI.Put_Float("Video", "WeatherIntensity", WeatherIntensity);
+
+	ConfigINI.Put_Bool("Video", "Water", IsWater);
+	ConfigINI.Put_String("Video", "WaterTexture", WaterTexture.c_str());
+	ConfigINI.Put_Float("Video", "WaterSpeedX", WaterSpeedX);
+	ConfigINI.Put_Float("Video", "WaterSpeedY", WaterSpeedY);
+	ConfigINI.Put_Float("Video", "WaterTilingX", WaterTilingX);
+	ConfigINI.Put_Float("Video", "WaterTilingY", WaterTilingY);
+	ConfigINI.Put_Int("Video", "WaterAnimInterval", WaterAnimInterval);
+	ConfigINI.Put_Float("Video", "WaterIntensity", WaterIntensity);
+	ConfigINI.Put_Int("Video", "WaterFogColor", (int)WaterFogColor);
+	ConfigINI.Put_Float("Video", "WaterFogAmount", WaterFogAmount);
 	ConfigINI.Put_Bool("Video", "IntegerScaling", IntegerScaling);
 	ConfigINI.Put_Bool("Video", "VSync", VSync);
 	ConfigINI.Put_Int("Video", "Renderer", Renderer);

@@ -33,6 +33,7 @@
 #pragma once
 
 #include "keyboard.h"
+#include "stringid.h"
 
 #include "diff.hh"
 
@@ -185,6 +186,43 @@ class OptionsClass {
 		 */
 		float BloomThreshold;
 		float BloomIntensity;
+
+		/*
+		 * EXTENSION: a full-screen scrolling cloud shadow, independent of PostFX/bloom
+		 * above -- both can be on at once. Hidden over unexplored shroud, shown through
+		 * both fog and full visibility. WeatherTexture empty leaves this off regardless
+		 * of IsWeather. WeatherSpeedX/Y are in texture-lengths per game frame;
+		 * WeatherMagnification is how many times the texture tiles across the screen;
+		 * WeatherIntensity is 0 (no effect) to 1 (full multiply by the cloud texture's
+		 * own brightness).
+		 */
+		bool IsWeather;
+		TStringID<64> WeatherTexture;
+		float WeatherSpeedX;
+		float WeatherSpeedY;
+		float WeatherMagnification;
+		float WeatherIntensity;
+
+		/*
+		 * EXTENSION: an animated underwater caustic light plus a depth-fog tint, same
+		 * shroud/fog gating as weather above. WaterTexture is expected to be a 32-frame
+		 * horizontal strip, matching the reference this is modeled on (see
+		 * fs_atmosphere.sc); WaterAnimInterval is how many game frames each of those 32
+		 * frames holds for. WaterSpeedX/Y/TilingX/Y/Intensity mean the same thing as
+		 * their Weather equivalents above. WaterFogColor/WaterFogAmount are the tint
+		 * color (0xAABBGGRR) and how strongly it takes over toward the bottom of the
+		 * screen; the reference's own fog_base is what WaterFogAmount is modeled on.
+		 */
+		bool IsWater;
+		TStringID<64> WaterTexture;
+		float WaterSpeedX;
+		float WaterSpeedY;
+		float WaterTilingX;
+		float WaterTilingY;
+		int WaterAnimInterval;
+		float WaterIntensity;
+		unsigned int WaterFogColor;
+		float WaterFogAmount;
 
 		/*
 		 * If the frame may only be enlarged by whole multiples, then this flag will be

@@ -237,3 +237,62 @@ void Backend_Queue_GPU_Beam(float startx, float starty, float startdepth, float 
 // uploaded this frame draws unoccluded, and with no visibility snapshot draws regardless
 // of shroud/fog, matching every other GPU effect's fail-open choice.
 void Backend_Queue_GPU_Particle(float x, float y, float depth, float size, unsigned int color, BackendTextureHandle texture);
+
+
+// EXTENSION: weather (a scrolling cloud shadow) and water (an animated caustic light plus
+// a depth-fog tint), both full-screen effects applied after every GPU-composited object
+// and gated to explored terrain only -- hidden in unexplored shroud, shown through both
+// fog and full visibility. Ported from the reference package's own pixelshader_cloud and
+// pixelshader_caustic_maps; see fs_atmosphere.sc for the actual math.
+struct BackendWeatherConfig {
+	bool Enabled = false;
+	BackendTextureHandle Texture = BACKEND_INVALID_TEXTURE;
+
+	// Already-wrapped (0..1) scroll offset for this frame; the caller accumulates this
+	// over time itself, the same way a beam accumulates LaserTextureSpeed into its own
+	// scroll phase, so this renderer never needs to know what a "game frame" is.
+	float ScrollX = 0.0f;
+	float ScrollY = 0.0f;
+
+	// How many times the cloud texture tiles across the screen.
+	float Magnification = 1.0f;
+
+	// How strongly the cloud shadow darkens the scene: 0 is no effect, 1 is a full
+	// multiply by the cloud texture's own brightness.
+	float Intensity = 0.5f;
+};
+
+struct BackendWaterConfig {
+	bool Enabled = false;
+	BackendTextureHandle Texture = BACKEND_INVALID_TEXTURE;
+
+	// Already-wrapped (0..1) tile-scroll offset for this frame; see
+	// BackendWeatherConfig::ScrollX/Y for the same reasoning.
+	float ScrollX = 0.0f;
+	float ScrollY = 0.0f;
+
+	// How many times the caustic sheet tiles across the screen.
+	float TilingX = 1.0f;
+	float TilingY = 1.0f;
+
+	// The current animation frame, already divided into 0..1 (frame / 32.0, since the
+	// reference package's own caustic sheet is a 32-frame horizontal strip); the caller
+	// tracks which raw frame index it's on and does this division itself.
+	float Frame = 0.0f;
+
+	// How strongly the caustic light brightens the scene, same 0..1 meaning as
+	// BackendWeatherConfig::Intensity.
+	float Intensity = 0.5f;
+
+	// 0xAABBGGRR: the underwater depth-fog tint color; the alpha channel is this tint's
+	// own strength toward the bottom of the screen, 0 (no fog tint at all) to 255 (fully
+	// replaced by the tint color there).
+	unsigned int FogColor = 0x00000000;
+};
+
+// Sets this frame's weather/water configuration, consumed by the next Backend_Present
+// call. Cheap to call every frame with the same values -- there's no texture reload or
+// other expensive work here, just storing a few floats and two already-loaded texture
+// handles (see Backend_Load_Texture) -- so the caller doesn't need to track whether
+// anything actually changed since the last call.
+void Backend_Set_Atmosphere(BackendWeatherConfig const & weather, BackendWaterConfig const & water);
