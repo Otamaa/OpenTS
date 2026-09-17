@@ -457,6 +457,122 @@ bool Main_Loop(void)
 
 void Ingame_Menu_Dialog(void);
 
+#include "bgfxbackend.h"
+#include "gpuparticle.h"
+#include "dbgprint.h"
+#include "video.h"
+#include "weapon.h"
+#include "laser.h"
+
+/// <summary>
+/// EXTENSION: loads a texture for the GPU effects debug switch below by filename, the
+/// same CCFileClass + Load_Alloc_Data + Backend_Load_Texture path every other GPU texture
+/// in this renderer uses. A small local copy rather than reusing laser.cpp's own private
+/// Load_Laser_Texture, since that one is file-local and this is debug-only code that
+/// doesn't need to change laser.cpp's own interface just to reach it.
+/// </summary>
+static BackendTextureHandle Debug_Load_GPU_Texture(char const * filename)
+{
+	CCFileClass file(filename);
+	if (!file.Is_Available()) {
+		DebugString("GPU effects debug switch: could not find '%s'.\n", filename);
+		return(BACKEND_INVALID_TEXTURE);
+	}
+
+	int size = file.Size();
+	void * data = Load_Alloc_Data(file);
+	if (data == NULL || size <= 0) {
+		delete [] (char *)data;
+		return(BACKEND_INVALID_TEXTURE);
+	}
+
+	BackendTextureHandle texture = Backend_Load_Texture(filename, data, (unsigned int)size);
+	delete [] (char *)data;
+	return(texture);
+}
+
+
+/// <summary>
+/// EXTENSION: a single debug keypress (see KN_F9 below) that turns on every GPU effect
+/// this renderer supports at once, using whichever of these test texture files happen to
+/// be sitting in the game's own asset search path, for spot-checking the whole pipeline
+/// without needing rules.ini/art.ini edits or an actual weapon to fire. The full-screen
+/// effects (bloom/weather/water) and the one test beam are set up once, the first press;
+/// every press after that just spawns another test particle burst, so repeated presses
+/// are useful rather than redundant. This whole function -- like everything else in this
+/// file -- only exists in a _DEBUG build and only runs once Debug_Flag is already on.
+/// </summary>
+static void Debug_Force_All_GPU_Effects(Coord const & coord)
+{
+	static bool _AlreadyForced = false;
+	static WeaponTypeClass * _TestBeamWeapon = NULL;
+
+	if (!_AlreadyForced) {
+		_AlreadyForced = true;
+
+		//Options.PostFX = VIDEO_POSTFX_BLOOM;
+		//Options.BloomThreshold = 0.6f;
+		//Options.BloomIntensity = 0.8f;
+
+		Options.IsWeather = false;
+		//Options.WeatherTexture = "cloud_map.jpg";
+		//Options.WeatherSpeedX = 0.01f;
+		//Options.WeatherSpeedY = 0.004f;
+		//Options.WeatherMagnification = 2.0f;
+		//Options.WeatherIntensity = 0.5f;
+
+		Options.IsWater = false;
+		//Options.WaterTexture = "caustic_map.jpg";
+		//Options.WaterSpeedX = 0.015f;
+		//Options.WaterSpeedY = 0.008f;
+		//Options.WaterTilingX = 4.0f;
+		//Options.WaterTilingY = 4.0f;
+		//Options.WaterAnimInterval = 2;
+		//Options.WaterIntensity = 0.4f;
+		//Options.WaterFogColor = 0x00206080;
+		//Options.WaterFogAmount = 0.35f;
+
+		// A throwaway WeaponTypeClass, not something LaserDrawClass needs registered
+		// anywhere -- passing NULL for ininame is what skips the usual name-table
+		// registration a real, rules.ini-driven weapon type would get.
+		//_TestBeamWeapon = new WeaponTypeClass("DUMMYLASER");
+		//_TestBeamWeapon->LaserTexture = "FXAlienLaser.dds";
+		//_TestBeamWeapon->LaserTextureThickness = 24.0f;
+		//_TestBeamWeapon->LaserTextureSpeed = 0.05f;
+		//_TestBeamWeapon->LaserTextureNoStretch = true;
+		//_TestBeamWeapon->LaserTextureFilter = 2;
+		//_TestBeamWeapon->LaserDistortion = "displacement.jpg";
+		//_TestBeamWeapon->LaserDistortionWidth = 1.0f;
+		//_TestBeamWeapon->LaserDistortionDisplacement = 0.05f;
+		//_TestBeamWeapon->AllowTextureCache = true;
+
+		//Coord end = coord;
+		//end.X += 6 * 256;
+
+		//// duration is in game frames; long enough to sit there for the rest of a
+		//// reasonable test session without needing to press F9 again just to keep it lit.
+		//new LaserDrawClass(coord, end, 0, true, RGBClass(255, 255, 255), RGBClass(200, 220, 255), RGBClass(10, 10, 10), 999999, false, false, 1.0f, 1.0f, _TestBeamWeapon);
+
+		DebugString("GPU effects debug switch: bloom/weather/water/test beam forced on.\n");
+	}
+
+	GPUParticleStyle burststyle;
+	burststyle.BurstCount = 40;
+	burststyle.Lifetime = 40;
+	burststyle.Gravity = 2.0f;
+	burststyle.SpreadRadius = 40.0f;
+	burststyle.SpreadHeight = 60.0f;
+	burststyle.InitialVelocityZ = 20.0f;
+	burststyle.Size = 6.0f;
+	burststyle.SizeVariance = 0.5f;
+	burststyle.Color = 0xFF60A0FF;
+	new GPUParticleClass(coord, burststyle);
+
+	DebugString("GPU effects debug switch: spawned a test particle burst.\n");
+}
+
+#include "cell.h"
+
 /***********************************************************************************************
  * Keyboard_Process -- Processes the tactical map input codes.                                 *
  *                                                                                             *
@@ -516,6 +632,14 @@ void Keyboard_Process(KeyNumType & input)
 			Map.Zoom_Mode_Control();
 		}
 
+		Point2D mouse_pos = Get_Mouse_Point();
+		Cell tempcell = TacticalMap->Pixel_To_Cell(mouse_pos);
+		CellClass *tempcellptr = &Map[tempcell];
+		int height = tempcellptr->Height * LEVEL_LEPTON_H + (tempcellptr->IsUnderBridge ? BRIDGE_LEPTON_HEIGHT : 0);
+		Coord coord (tempcell, height);
+
+		if(input == KN_F9)
+		Debug_Force_All_GPU_Effects(coord);
 #ifdef _DEBUG
 		if (Debug_Flag) {
 			switch (int(input)) {
@@ -553,7 +677,8 @@ void Keyboard_Process(KeyNumType & input)
 			}
 		}
 
-		if (input != 0 && Debug_Flag && input && (input & KN_RLSE_BIT) == 0) {
+		if (input != 0 && //Debug_Flag &&
+			input && (input & KN_RLSE_BIT) == 0) {
 			Debug_Key(input);
 		}
 #endif

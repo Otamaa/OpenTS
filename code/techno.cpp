@@ -3736,7 +3736,6 @@ int TechnoClass::Rearm_Delay(int which) const
 	return(3);
 }
 
-
 /***********************************************************************************************
  * TechnoClass::Laser_Zap -- Fires laser zap at the target specified.                          *
  *                                                                                             *
@@ -3761,7 +3760,7 @@ int TechnoClass::Rearm_Delay(int which) const
  *   09/30/1996 BWG : Created.                                                                 *
  *   09/30/1996 JLB : Uses standard facing conversion and distance routines.                   *
  *=============================================================================================*/
-void TechnoClass::Laser_Zap(AbstractClass * target, int which, WeaponTypeClass const * weapon, Coord const & source_coord)
+void TechnoClass::Laser_Zap(AbstractClass * target, int which, WeaponTypeClass * weapon, Coord const & source_coord)
 {
 	Coord source;
 	Coord dest;
@@ -3789,6 +3788,16 @@ void TechnoClass::Laser_Zap(AbstractClass * target, int which, WeaponTypeClass c
 	if (RTTI == RTTI_BUILDING) {
 		((BuildingClass *)this)->IsCharging = false;
 	}
+
+	//weapon->LaserTexture = "FXAlienLaser.dds";
+	//weapon->LaserTextureThickness = 24.0f;
+	//weapon->LaserTextureSpeed = 0.05f;
+	//weapon->LaserTextureNoStretch = true;
+	//weapon->LaserTextureFilter = 2;
+	//weapon->LaserDistortion = "displacement.jpg";
+	//weapon->LaserDistortionWidth = 1.0f;
+	//weapon->LaserDistortionDisplacement = 0.05f;
+	//weapon->AllowTextureCache = true;
 
 	new LaserDrawClass(source, dest, zadjust, true, weapon->LaserInnerColor, weapon->LaserOuterColor, weapon->LaserOuterSpread, duration, false, false, 1.0, 0.0, weapon);
 	new WaveClass(source, dest, this, weapon->IsBigLaser ? WAVE_BIG_LASER : WAVE_LASER, (TechnoClass *)target);

@@ -617,6 +617,47 @@ static void Destroy_Bloom_Targets(void)
 
 
 /// <summary>
+/// Drops every cached texture from the current BGFX renderer state and clears the cache
+/// map. Called during init and shutdown so stale handles never survive a reset or an
+/// invalidated renderer instance into a later frame.
+/// </summary>
+static void Clear_Loaded_Texture_Cache(void)
+{
+	for (size_t index = 0; index < _LoadedTextures.size(); index++) {
+		if (bgfx::isValid(_LoadedTextures[index])) {
+			bgfx::destroy(_LoadedTextures[index]);
+		}
+	}
+	_LoadedTextures.clear();
+	_LoadedTextureCache.clear();
+}
+
+
+/// <summary>
+/// Looks a texture handle up in the Backend_Load_Texture cache by its BackendTextureHandle
+/// index, returning an invalid bgfx handle for BACKEND_INVALID_TEXTURE or an out-of-range
+/// one rather than letting a stale handle from a different renderer instance read garbage.
+/// </summary>
+static bgfx::TextureHandle Resolve_Loaded_Texture(BackendTextureHandle handle)
+{
+	if (handle == BACKEND_INVALID_TEXTURE) {
+		return BGFX_INVALID_HANDLE;
+	}
+
+	if ((size_t)handle >= _LoadedTextures.size()) {
+		return BGFX_INVALID_HANDLE;
+	}
+
+	bgfx::TextureHandle texture = _LoadedTextures[handle];
+	if (!bgfx::isValid(texture)) {
+		return BGFX_INVALID_HANDLE;
+	}
+
+	return(texture);
+}
+
+
+/// <summary>
 /// Makes sure the bloom chain has targets sized for the given frame, allocating them on
 /// first use or after a resize and reusing them otherwise.
 /// </summary>
@@ -908,18 +949,6 @@ static void Submit_Particle_Batch(bgfx::ViewId view, BackendTextureHandle textur
 }
 
 
-/// <summary>
-/// Looks a texture handle up in the Backend_Load_Texture cache by its BackendTextureHandle
-/// index, returning an invalid bgfx handle for BACKEND_INVALID_TEXTURE or an out-of-range
-/// one rather than letting a stale handle from a different renderer instance read garbage.
-/// </summary>
-static bgfx::TextureHandle Resolve_Loaded_Texture(BackendTextureHandle handle)
-{
-	if (handle == BACKEND_INVALID_TEXTURE || (size_t)handle >= _LoadedTextures.size()) {
-		return BGFX_INVALID_HANDLE;
-	}
-	return(_LoadedTextures[handle]);
-}
 
 
 /// <summary>
@@ -1364,6 +1393,8 @@ bool Backend_Init(NativeWindow const & window, int drawablewidth, int drawablehe
 		return(true);
 	}
 
+	Clear_Loaded_Texture_Cache();
+
 	// Presents happen at whatever depth the engine has reached, including from inside a
 	// dialog's paint handler, so the renderer has to run on this thread. Calling
 	// renderFrame before init is what selects that.
@@ -1561,6 +1592,7 @@ void Backend_Shutdown(void)
 		return;
 	}
 
+	Clear_Loaded_Texture_Cache();
 	Destroy_Prescale_Target();
 	Destroy_Bloom_Targets();
 	Destroy_Overlay_Target();
@@ -2312,6 +2344,17 @@ static BackendTextureHandle Register_Loaded_Texture(char const * cachekey, bgfx:
 	return(handle);
 }
 
+static void Invalidate_Stale_Loaded_Texture(BackendTextureHandle handle)
+{
+	if (handle == BACKEND_INVALID_TEXTURE || (size_t)handle >= _LoadedTextures.size()) {
+		return;
+	}
+
+	if (!bgfx::isValid(_LoadedTextures[handle])) {
+		_LoadedTextures[handle] = BGFX_INVALID_HANDLE;
+	}
+}
+
 
 /// <summary>
 /// Loads (and caches by cachekey) a GPU texture from a whole file's bytes. See the
@@ -2325,6 +2368,13 @@ BackendTextureHandle Backend_Load_Texture(char const * cachekey, void const * fi
 
 	std::unordered_map<std::string, BackendTextureHandle>::iterator cached = _LoadedTextureCache.find(cachekey);
 	if (cached != _LoadedTextureCache.end()) {
+		if (cached->second != BACKEND_INVALID_TEXTURE) {
+			Invalidate_Stale_Loaded_Texture(cached->second);
+			if (!bgfx::isValid(_LoadedTextures[cached->second])) {
+				_LoadedTextureCache.erase(cached);
+				return(BACKEND_INVALID_TEXTURE);
+			}
+		}
 		return(cached->second);
 	}
 

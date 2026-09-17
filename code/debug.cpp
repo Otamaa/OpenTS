@@ -60,7 +60,16 @@
 #include "surface.h"
 #include "dsurface.h"
 #include "weapon.h"
+#include "bgfxbackend.h"
+#include "ccfile.h"
+#include "data.h"
+#include "gpuparticle.h"
+#include "laser.h"
+#include "options.h"
+#include "video.h"
 
+#include "dbgprint.h"
+#include "goptions.h"
 #include "bench.hh"
 
 
@@ -80,6 +89,7 @@ void ___DebugFunc(void)
 
 
 static CDTimerClass<SystemTimerClass> DebugTimer;
+
 
 /***********************************************************************************************
  * Debug_Key -- Debug mode keyboard processing.                                                *
@@ -329,6 +339,13 @@ void Debug_Key(unsigned input)
 			case KN_F3:
 				Debug_Icon = (Debug_Icon == false);
 				Map.Flag_To_Redraw(GS_REDRAW_ALL);
+				break;
+
+			// EXTENSION: turns on every GPU effect this renderer supports at once, using
+			// test textures dropped into the game's own asset search path. See
+			// Debug_Force_All_GPU_Effects's own doc comment for exactly what it does.
+			case KN_F9:
+				Debug_Force_All_GPU_Effects(coord);
 				break;
 
 			/*
