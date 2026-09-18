@@ -122,7 +122,7 @@ BulletClass::BulletClass(void) :
 	Class(NULL),
 	Payback(NULL),
 	IsInaccurate(false),
-	Fuse(),
+	//Fuse(),
 	IsBright(false),
 	SmoothedClosure(0),
 	field_A4(true),
@@ -136,6 +136,7 @@ BulletClass::BulletClass(void) :
 	AnimRate(0)
 {
 	Create_ID();
+	ObjectEntity::Registry_Impl().emplace<FuseClass>(EntitySlot);
 	Bullets.Add(this);
 }
 
@@ -827,7 +828,7 @@ void BulletClass::AI(void)
 			**	maintenance (usually nothing). Otherwise, explode and then
 			**	delete the bullet.
 			*/
-			FuseResultType fuse = Is_Homing() ? Fuse.Fuse_Checkup(coord) : FUSE_WAIT;
+			FuseResultType fuse = Is_Homing() ? ObjectEntity::Registry_Impl().get<FuseClass>(EntitySlot).Fuse_Checkup(coord) : FUSE_WAIT;
 			if (!forced && (Class->IsDropping || fuse == FUSE_WAIT)) {
 				/*
 				**	Certain projectiles lose strength when they travel.
@@ -1113,7 +1114,7 @@ bool BulletClass::Unlimbo(Coord const & coord, TVelocity3D<double> const & veloc
 		/*
 		**	Arm the fuse.
 		*/
-		Fuse.Arm_Fuse(PositionCoord, tcoord, dynamic_cast<AircraftClass *>(TarCom) != NULL ? 0 : Class->Arming);
+			ObjectEntity::Registry_Impl().get<FuseClass>(EntitySlot).Arm_Fuse(PositionCoord, tcoord, dynamic_cast<AircraftClass *>(TarCom) != NULL ? 0 : Class->Arming);
 
 		if (Is_Homing()) {
 			Velocity.Set_Speed(1);
@@ -1238,8 +1239,8 @@ void BulletClass::Bullet_Explodes(bool forced)
 
 	if (!Warhead->IsEMEffect) {
 		if (!Class->IsSplits) {
-			if (!forced && !Class->IsArcing && !Is_Homing() && Fuse.Fuse_Target() != COORD_NONE) {
-				coord = Fuse.Fuse_Target();
+			if (!forced && !Class->IsArcing && !Is_Homing() && ObjectEntity::Registry_Impl().get<FuseClass>(EntitySlot).Fuse_Target() != COORD_NONE) {
+				coord = ObjectEntity::Registry_Impl().get<FuseClass>(EntitySlot).Fuse_Target();
 			}
 
 			if (target != NULL && target->In_Which_Layer() != LAYER_GROUND) {
@@ -1442,7 +1443,9 @@ void BulletClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(Class);
 	stream.Serialize(Payback);
 	stream.Serialize(IsInaccurate);
-	stream.Serialize(Fuse);
+	auto& FuseComponent = ObjectEntity::Registry_Impl().get<FuseClass>(EntitySlot);
+	FuseComponent.Serialize(stream);
+	//stream.Serialize(Fuse);
 	stream.Serialize(IsBright);
 	stream.Serialize(Velocity);
 	stream.Serialize(BounceCount);

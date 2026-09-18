@@ -1518,7 +1518,8 @@ ResultType UnitClass::Take_Damage(int & damage, int distance, WarheadTypeClass c
 						i->Assign_Mission(MISSION_GUARD);
 					}
 					if (select) i->Select();
-					if (Tag != NULL && Tag->Is_To_Inherit()) i->Attach_Tag(Tag);
+					auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+					if (TagClass_Component.Tag != NULL && TagClass_Component.Tag->Is_To_Inherit()) i->Attach_Tag(TagClass_Component.Tag);
 				} else {
 					delete i;
 				}
@@ -2025,10 +2026,11 @@ bool UnitClass::Try_To_Deploy(void)
 					*/
 					Stun();
 
-					if (Tag != NULL) {
-						building->Attach_Tag(Tag);
-						Tag->AttachCount--;
-						Tag = NULL;
+					auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+					if (TagClass_Component.Tag != NULL) {
+						building->Attach_Tag(TagClass_Component.Tag);
+						TagClass_Component.Tag->AttachCount--;
+						TagClass_Component.Tag = NULL;
 					}
 
 					Delete_Me();
@@ -5668,7 +5670,7 @@ void UnitClass::Write_INI(CCINIClass & ini)
 		if (unit != NULL && !unit->IsInLimbo && unit->IsActive) {
 			char	uname[10];
 			char	buf[128];
-
+			auto& unitTagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(unit->EntitySlot);
 			sprintf(uname, "%d", index);
 			sprintf(buf, "%s,%s,%d,%d,%d,%d,%s,%s,%d,%d,%d,%d,%d,%d",
 				(char const *)unit->House->Class->IniName,
@@ -5678,7 +5680,7 @@ void UnitClass::Write_INI(CCINIClass & ini)
 				unit->PositionCell.Y,
 				unit->PrimaryFacing.Current().As_Dir256(),
 				MissionClass::Mission_Name(unit->Mission),
-				(unit->Tag != NULL && unit->Tag->Class != NULL) ? (char const *)unit->Tag->Class->IniName : "None",
+				(unitTagClass_Component.Tag != NULL && unitTagClass_Component.Tag->Class != NULL) ? (char const *)unitTagClass_Component.Tag->Class->IniName : "None",
 				unit->Veterancy.To_Integer(),
 				unit->Group,
 				unit->IsOnBridge,
@@ -6116,17 +6118,15 @@ void UnitClass::Detach(AbstractClass const * target, bool all)
 /// <param name="source">The object responsible for the kill, or NULL if there was none.</param>
 void UnitClass::Record_The_Kill(TechnoClass * source)
 {
-	if (Tag != NULL) {
-		if (EnteredByInfType == INFANTRY_NONE || !Tag->Is_To_Inherit()) {
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+
+	if (TagClass_Component.Tag != NULL) {
+		if (EnteredByInfType == INFANTRY_NONE || !TagClass_Component.Tag->Is_To_Inherit()) {
 			if (source != NULL) {
-				Tag->Spring(TEVENT_DESTROYED, this);
+				Spring_Tag(TEVENT_DESTROYED, this);
 			}
-			if (Tag != NULL) {
-				Tag->Spring(TEVENT_DESTROYED_ANY, this);
-			}
-			if (Tag != NULL) {
-				Tag->Spring(TEVENT_DESTROYED_ANY_X, this);
-			}
+			Spring_Tag_Regardless(TEVENT_DESTROYED_ANY, this);
+			Spring_Tag_Regardless(TEVENT_DESTROYED_ANY_X, this);		
 		}
 	}
 	BASECLASS::Record_The_Kill(source);

@@ -385,9 +385,7 @@ ResultType InfantryClass::Take_Damage(int & damage, int distance, WarheadTypeCla
 
 		Do_Action(DO_STRUGGLE, true, true);
 
-		if (Tag != NULL) {
-			Tag->Spring(TEVENT_PARALYZED, this, CELL_NONE, false, source);
-		}
+		Spring_Tag_Regardless(TEVENT_PARALYZED, this, CELL_NONE, false, source);
 	}
 
 	res = BASECLASS::Take_Damage(damage, distance, warhead, source, forced, no_crew);
@@ -743,19 +741,18 @@ void InfantryClass::Per_Cell_Process(PCPType why)
 				TechnoClass * tech = (TechnoClass *)NavCom;
 				if (tech != NULL) {
 					if (PositionCell == tech->PositionCell) {
-						if (tech->Tag) {
-							tech->Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-						}
+
+						tech->Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
 						tech->Detach_All(false);
 						tech->Captured(House);
 						tech->EnteredByInfType = Class->HeapID;
 						tech->Scatter_Incoming_Infantry();
-						if (Tag && Tag->Is_To_Inherit()) {
-							tech->Attach_Tag(Tag);
+						auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+						if (TagClass_Component.Tag && TagClass_Component.Tag->Is_To_Inherit()) {
+							tech->Attach_Tag(TagClass_Component.Tag);
 						}
-						if (Tag) {
-							Tag->Spring(TEVENT_DESTROYED_ANY, this);
-						}
+
+						Spring_Tag_Regardless(TEVENT_DESTROYED_ANY, this);
 						Delete_Me();
 						BEnd(BENCH_PCP);
 						return;
@@ -773,9 +770,8 @@ void InfantryClass::Per_Cell_Process(PCPType why)
 			TechnoClass * tech = cellptr->Cell_Building();
 
 			if (tech != NULL && (tech == NavCom || tech == TarCom)) {
-				if (tech->Tag) {
-					tech->Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-				}
+
+				tech->Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
 
 				if (Class->IsEngineer) {
 					// are we trying to repair a bridge?
@@ -822,12 +818,13 @@ void InfantryClass::Per_Cell_Process(PCPType why)
 							int damage = std::min<double>((tech->TClass->MaxStrength) * ((1 - Rule->ConditionRed / 2) / 2), maxdamage);
 							tech->Take_Damage(damage, 0, Rule->C4Warhead, this, true);
 						} else if (iscapturable) {
-							if (tech->Tag) {
-								tech->Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-							}
+
+							tech->Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
 							tech->House->IsThieved = true;
-							if (Tag && Tag->Is_To_Inherit()) {
-								tech->Attach_Tag(Tag);
+							auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+
+							if (TagClass_Component.Tag && TagClass_Component.Tag->Is_To_Inherit()) {
+								tech->Attach_Tag(TagClass_Component.Tag);
 							}
 							tech->Captured(House);
 							tech->EnteredByInfType = Class->HeapID;
@@ -840,9 +837,8 @@ void InfantryClass::Per_Cell_Process(PCPType why)
 						((BuildingClass *)tech)->Spied_By(House);
 					}
 				}
-				if (Tag) {
-					Tag->Spring(TEVENT_DESTROYED_ANY, this);
-				}
+
+				Spring_Tag_Regardless(TEVENT_DESTROYED_ANY, this);
 				Delete_Me();
 				BEnd(BENCH_PCP);
 				return;
@@ -889,9 +885,7 @@ void InfantryClass::Per_Cell_Process(PCPType why)
 		}
 
 		if (Mission == MISSION_ENTER && techno != NULL && (NavCom == techno || TarCom == techno || on_target_cell != NULL && techno == on_target_cell)) {
-			if (techno->Tag) {
-				techno->Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-			}
+			techno->Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
 			if (techno->RTTI == RTTI_BUILDING) {
 				if (techno == Get_Cell_Ptr()->Cell_Building() && Transmit_Message(RADIO_IM_IN) == RADIO_ROGER) {
 					Limbo();
@@ -933,9 +927,9 @@ void InfantryClass::Per_Cell_Process(PCPType why)
 					BEnd(BENCH_PCP);
 					return;
 				}
-				if (building->Tag) {
-					building->Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-				}
+
+				building->Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
+
 				if (building->Mission != MISSION_DECONSTRUCTION) {
 					building->IsGoingToBlow = true;
 					building->Clicked_As_Target((Rule->C4Delay * TICKS_PER_MINUTE) / 2);
@@ -3305,7 +3299,7 @@ void InfantryClass::Write_INI(CCINIClass & ini)
 		if (!infantry->IsInLimbo) {
 			char	uname[10];
 			char	buf[128];
-
+			auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(infantry->EntitySlot);
 			sprintf(uname, "%d", index);
 			sprintf(buf, "%s,%s,%d,%d,%d,%d,%s,%d,%s,%d,%d,%d,%d,%d",
 					(char const *)infantry->House->Class->IniName,
@@ -3317,7 +3311,7 @@ void InfantryClass::Write_INI(CCINIClass & ini)
 					MissionClass::Mission_Name((infantry->Mission == MISSION_NONE) ?
 						infantry->MissionQueue : infantry->Mission),
 					infantry->PrimaryFacing.Current().As_Dir256(),
-					infantry->Tag != NULL ? (char const *)infantry->Tag->Class->IniName : "None",
+					TagClass_Component.Tag != NULL ? (char const *)TagClass_Component.Tag->Class->IniName : "None",
 					infantry->Veterancy.To_Integer(),
 					infantry->Group,
 					infantry->IsOnBridge,
@@ -3475,13 +3469,12 @@ bool InfantryClass::Theft_AI(void)
 	 */
 	if (abs(z - coord.Z) < LEVEL_LEPTON_H) {
 		if (Distance_To(unit) < CELL_LEPTON / 2) {
-			if (unit->Tag != NULL) {
-				unit->Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-			}
+			unit->Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
 			unit->Transmit_Message(RADIO_OVER_OUT);
 			unit->Detach_All(false);
-			if (Tag != NULL && Tag->Is_To_Inherit()) {
-				unit->Attach_Tag(Tag);
+			auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+			if (TagClass_Component.Tag != NULL && TagClass_Component.Tag->Is_To_Inherit()) {
+				unit->Attach_Tag(TagClass_Component.Tag);
 			}
 			unit->Captured(House);
 			unit->EnteredByInfType = Class->HeapID;

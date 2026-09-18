@@ -137,33 +137,31 @@
 
 
 #define	GRAVITY	1.4
+entt::registry ObjectClass::registry;
 
-namespace ObjectEntity
-{
-	entt::registry & Registry_Impl(void)
-	{
-		static entt::registry registry;
-		return(registry);
-	}
+void TransformComponent::Serialize(SaveStreamClass& stream) {
+	stream.Serialize(Position);
 }
 
-struct TransformComponent
-{
-    Coord Position;
+void ObjectHealthComponent::Serialize(SaveStreamClass& stream) {
+	stream.Serialize(Strength);
+}
 
-	void Serialize(SaveStreamClass& stream) {
-		stream.Serialize(Position);
+void TagClassComponent::Serialize(SaveStreamClass& stream) {
+	stream.Serialize(Tag);
+	stream.Serialize(HasTag);
+	stream.Serialize(TagType);
+}
+
+void TagClassComponent::Clear() {
+	if (Tag) {
+		Tag->AttachCount--;
+		Tag = NULL;
 	}
-};
+	HasTag = false;
+	TagType.clear();
 
-struct ObjectHealthComponent
-{
-	int Strength;
-
-	void Serialize(SaveStreamClass& stream) {
-		stream.Serialize(Strength);
-	}
-};
+}
 
 /***********************************************************************************************
  * ObjectClass::ObjectClass -- Default constructor for objects.                                *
@@ -198,13 +196,14 @@ ObjectClass::ObjectClass(void) :
 	IsSubmittedToLayer(false),
 	Riser(0,0,0),
 	Next(NULL),
-	Tag(NULL),
-	EntitySlot(entt::null),
-	Position(COORD_NONE)
+	EntitySlot(entt::null)
 {
 	EntitySlot = ObjectEntity::Registry_Impl().create();
-	auto& component = ObjectEntity::Registry_Impl().emplace<ObjectHealthComponent>(EntitySlot);
-	component.Strength = 255;
+
+	ObjectEntity::Registry_Impl().emplace<ObjectHealthComponent>(EntitySlot);
+	ObjectEntity::Registry_Impl().emplace<TransformComponent>(EntitySlot);
+	ObjectEntity::Registry_Impl().emplace<TagClassComponent>(EntitySlot);
+
 	Objects.Add(this);
 	ObjectPtrTracker.Add(this);
 	AbstractTypePtrTracker.Add(this);
@@ -1274,8 +1273,11 @@ void ObjectClass::Debug_Dump(MonoClass * mono) const
 	if (Next != NULL) {
 		mono->Set_Cursor(20, 5);mono->Printf("%08X", Next);
 	}
-	if (Tag != NULL) {
-		mono->Text_Print((char const *)Tag->Class->IniName, 11, 3);
+
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+
+	if (!TagClass_Component.TagType.empty()) {
+		mono->Text_Print((char const *)TagClass_Component.TagType.c_str(), 11, 3);
 	}
 	mono->Set_Cursor(34, 1);mono->Printf("%3d", Strength);
 
@@ -1503,11 +1505,10 @@ bool ObjectClass::Unlimbo(Coord const & coord, Dir256 )
  *=============================================================================================*/
 void ObjectClass::Detach(AbstractClass const * target, bool all)
 {
-	if (Tag == target) {
-		if (Tag) {
-			Tag->AttachCount--;
-			Tag = NULL;
-		}
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+
+	if (TagClass_Component.Tag == target) {
+		TagClass_Component.Clear();
 	}
 
 	if (all) {
@@ -1741,10 +1742,10 @@ ResultType ObjectClass::Take_Damage(int & damage, int distance, WarheadTypeClass
 		**	Handle any trigger event associated with this object.
 		*/
 		if (result == RESULT_HALF) {
-			if (source && Tag != NULL) Tag->Spring(TEVENT_ENTER_YELLOW, this);
+			if (source) Spring_Tag_Regardless(TEVENT_ENTER_YELLOW, this);
 
 			if (IsActive) {
-				if (Tag != NULL) Tag->Spring(TEVENT_ENTER_YELLOW_ANY, this);
+				Spring_Tag_Regardless(TEVENT_ENTER_YELLOW_ANY, this);
 			} else {
 				return(RESULT_ALREADY_DESTROYED);
 			}
@@ -1752,10 +1753,10 @@ ResultType ObjectClass::Take_Damage(int & damage, int distance, WarheadTypeClass
 
 		if (IsActive) {
 			if (result == RESULT_MAJOR) {
-				if (source && Tag != NULL) Tag->Spring(TEVENT_ENTER_RED, this);
+				if (source) Spring_Tag_Regardless(TEVENT_ENTER_RED, this);
 
 				if (IsActive) {
-					if (Tag != NULL) Tag->Spring(TEVENT_ENTER_RED_ANY, this);
+					Spring_Tag_Regardless(TEVENT_ENTER_RED_ANY, this);
 				} else {
 					return(RESULT_ALREADY_DESTROYED);
 				}
@@ -1764,12 +1765,12 @@ ResultType ObjectClass::Take_Damage(int & damage, int distance, WarheadTypeClass
 
 		if (IsActive) {
 			if (Strength != oldstrength && Class_Of() != NULL && oldstrength == Class_Of()->MaxStrength) {
-				if (source && Tag != NULL) Tag->Spring(TEVENT_FIRST_DAMAGED, this);
-				if (Tag != NULL && IsActive) Tag->Spring(TEVENT_FIRST_DAMAGED_ANY, this);
+				if (source) Spring_Tag_Regardless(TEVENT_FIRST_DAMAGED, this);
+				Spring_Tag(TEVENT_FIRST_DAMAGED_ANY, this);
 
-				if (Tag != NULL) {
+				if (ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot).Tag != NULL) {
 					if (IsActive) {
-						if (source) Tag->Spring(TEVENT_FIRST_DAMAGED_ANY, this, CELL_NONE, false, source);
+						if (source) Spring_Tag_Regardless(TEVENT_FIRST_DAMAGED_ANY, this, CELL_NONE, false, source);
 					} else {
 						return(RESULT_ALREADY_DESTROYED);
 					}
@@ -1794,16 +1795,16 @@ ResultType ObjectClass::Take_Damage(int & damage, int distance, WarheadTypeClass
 
 			if (IsActive) {
 				if (source) {
-					if (Tag && result != RESULT_DESTROYED) {
-						Tag->Spring(TEVENT_ATTACKED, this, CELL_NONE, 0, source);
+					if (result != RESULT_DESTROYED) {
+						Spring_Tag_Regardless(TEVENT_ATTACKED, this, CELL_NONE, 0, source);
 					}
 				}
 			}
 
 			if (IsActive) {
 				if (source) {
-					if (Tag && result != RESULT_DESTROYED) {
-						Tag->Spring(TEVENT_ATTACKED_BY, this, CELL_NONE, 0, source);
+					if (result != RESULT_DESTROYED) {
+						Spring_Tag_Regardless(TEVENT_ATTACKED_BY, this, CELL_NONE, 0, source);
 					}
 				}
 			}
@@ -1994,20 +1995,45 @@ bool ObjectClass::Paradrop(Coord const & coord)
 bool ObjectClass::Attach_Tag(TagClass * tag)
 {
 	assert(this != NULL);
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
 
-	if (Tag != NULL) {
-		TagClass * tptr = Tag;
-		tptr->AttachCount--;
-		Tag = NULL;
+	if (TagClass_Component.Tag != NULL) {
+		TagClass_Component.Clear();
 	}
 
 	if (tag) {
-		Tag = tag;
-		tag->AttachCount++;
+		TagClass_Component.Tag = tag;
+		TagClass_Component.Tag->AttachCount++;
+		TagClass_Component.HasTag = true;
+		TagClass_Component.TagType = tag->Class->ID;
 		return(true);
 	}
 	return(false);
 }
+
+
+void ObjectClass::Spring_Tag(TEventType event, ObjectClass * object, Cell const & cell, bool forced, TechnoClass *source)
+{
+	if(!IsActive)
+		return;
+
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+
+	if (TagClass_Component.Tag != NULL) {
+		TagClass_Component.Tag->Spring(event, object, cell, forced, source);
+	}
+}
+
+
+void ObjectClass::Spring_Tag_Regardless(TEventType event, ObjectClass * object, Cell const & cell, bool forced, TechnoClass *source)
+{
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+
+	if (TagClass_Component.Tag != NULL) {
+		TagClass_Component.Tag->Spring(event, object, cell, forced, source);
+	}
+}
+
 
 
 /// <summary>
@@ -2100,15 +2126,12 @@ void ObjectClass::Set_Health_Percent(double health)
 
 int ObjectClass::Get_Strength(void) const
 {
-	assert(EntitySlot != entt::null);
-
 	auto& health_component = ObjectEntity::Registry_Impl().get<ObjectHealthComponent>(EntitySlot);
 	return(health_component.Strength);
 }
 
 void ObjectClass::Set_Strength(int strength)
 {
-	assert(EntitySlot != entt::null);
 	auto& health_component = ObjectEntity::Registry_Impl().get<ObjectHealthComponent>(EntitySlot);
 	health_component.Strength = strength;
 }
@@ -2123,9 +2146,9 @@ void ObjectClass::Serialize(SaveStreamClass & stream)
 
 	stream.Serialize(Riser);
 	stream.Serialize(Next);
-	stream.Serialize(Tag);
+	auto &TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+	TagClass_Component.Serialize(stream);
 
-	assert(EntitySlot != entt::null);
 
 	auto& health_component = ObjectEntity::Registry_Impl().get<ObjectHealthComponent>(EntitySlot);
 	health_component.Serialize(stream);
@@ -2142,7 +2165,9 @@ void ObjectClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(IsActive);
 	stream.Serialize(Layer);
 	stream.Serialize(IsSubmittedToLayer);
-	stream.Serialize(Position);
+
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+	Transform_component.Serialize(stream);
 }
 
 
@@ -2168,8 +2193,8 @@ int ObjectClass::Get_Cell_Height(void) const
 int ObjectClass::Get_Height(void) const
 {
 	assert(this != NULL);
-
-	return(Position.Z);
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+	return(Transform_component.Position.Z);
 }
 
 
@@ -2182,8 +2207,8 @@ int ObjectClass::Get_Height(void) const
 int ObjectClass::Get_Height_AGL(void) const
 {
 	assert(this != NULL);
-
-	int height = Position.Z - Map.Get_Height_GL(PositionCoord);
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+	int height = Transform_component.Position.Z - Map.Get_Height_GL(PositionCoord);
 	if (IsOnBridge) {
 		height -= BRIDGE_LEPTON_HEIGHT;
 	}
@@ -2206,12 +2231,14 @@ void ObjectClass::Set_Height_AGL(int height)
 	if (IsOnBridge) {
 		height += BRIDGE_LEPTON_HEIGHT;
 	}
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+
 	if (IsDown) {
 		Mark(MARK_UP);
-		Position.Z = height + Map.Get_Height_GL(PositionCoord);
+		Transform_component.Position.Z = height + Map.Get_Height_GL(PositionCoord);
 		Mark(MARK_DOWN);
 	} else {
-		Position.Z = height + Map.Get_Height_GL(PositionCoord);
+		Transform_component.Position.Z = height + Map.Get_Height_GL(PositionCoord);
 	}
 }
 
@@ -2227,12 +2254,14 @@ void ObjectClass::Set_Height(int z)
 {
 	assert(this != NULL);
 
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+
 	if (IsDown) {
 		Mark(MARK_UP);
-		Position.Z = z;
+		Transform_component.Position.Z = z;
 		Mark(MARK_DOWN);
 	} else {
-		Position.Z = z;
+		Transform_component.Position.Z = z;
 	}
 }
 
@@ -2325,9 +2354,10 @@ void ObjectClass::Compute_CRC(CRCEngine & crc) const
 	if (Next != NULL) {
 		crc(Next->Fetch_ID());
 	}
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
 
-	if (Tag != NULL) {
-		crc(Tag->Fetch_ID());
+	if (TagClass_Component.HasTag) {
+		crc(TagClass_Component.Tag->Fetch_ID());
 	}
 
 	crc(Strength);
@@ -2343,9 +2373,11 @@ void ObjectClass::Compute_CRC(CRCEngine & crc) const
 	crc(IsFalling);
 	crc(IsToExplode);
 	crc(IsActive);
-	crc(Position.X);
-	crc(Position.Y);
-	crc(Position.Z);
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+
+	crc(Transform_component.Position.X);
+	crc(Transform_component.Position.Y);
+	crc(Transform_component.Position.Z);
 }
 
 
@@ -2633,9 +2665,13 @@ ObjectClass * Vector_Closest_Object(DynamicVectorClass<ObjectClass *> const & li
 void ObjectClass::Set_Coord(Coord const & coord)
 {
 	assert(this != NULL);
-
-	Position = coord;
+	auto& Transform_component = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot);
+	Transform_component.Position = coord;
 }
+
+
+Coord ObjectClass::Get_Coord(void) const {return(ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot).Position);}
+Cell ObjectClass::Get_Cell(void) const {return(ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot).Position.As_Cell());}
 
 
 /// <summary>

@@ -53,6 +53,7 @@
 #include "visual.hh"
 
 #include <cassert>
+#include <string>
 
 class ObjectClass;
 class TechnoClass;
@@ -66,6 +67,29 @@ class WarheadTypeClass;
 class ShapeSet;
 class MonoClass;
 
+struct TransformComponent
+{
+    Coord Position { COORD_NONE };
+
+	void Serialize(SaveStreamClass& stream);
+};
+
+struct ObjectHealthComponent
+{
+	int Strength { 255 };
+
+	void Serialize(SaveStreamClass& stream);
+};
+
+struct TagClassComponent
+{
+	TagClass* Tag { NULL };
+	bool HasTag { false };
+	std::string TagType { };
+
+	void Serialize(SaveStreamClass& stream);
+	void Clear();
+};
 
 /**********************************************************************
 **	Every game object (that can exist on the map) is ultimately derived from this object
@@ -78,6 +102,9 @@ class ObjectClass : public AbstractClass
 		typedef AbstractClass BASECLASS;
 
 	public:
+
+		static entt::registry registry;
+
 		enum {
 			PARACHUTE_MAX_FALL_RATE = -3,
 			NO_PARACHUTE_MAX_FALL_RATE = -100,
@@ -101,12 +128,12 @@ class ObjectClass : public AbstractClass
 		 * Every object can be assigned a tag; the same tag can be assigned
 		 * to multiple objects.
 		 */
-		TagClass * Tag;
+		//TagClass * Tag;
 
 		/*
 		**	This is the current strength of this object.
 		*/
-		int Strength;
+		//int Strength;
 
 		/*
 		**	The object can be in one of two states -- placed down on the map, or not. If the
@@ -197,7 +224,7 @@ class ObjectClass : public AbstractClass
 		**	The coordinate location of the unit. For vehicles, this is the center
 		**	point. For buildings, it is the upper left corner.
 		*/
-		Coord Position;
+		//Coord Position;
 
 		/*
 		* entity slot for this abstract
@@ -273,7 +300,6 @@ class ObjectClass : public AbstractClass
 		virtual void Detach_All(bool all=true);
 		virtual void Record_The_Kill(TechnoClass * );
 		virtual bool Paradrop(Coord const & coord);
-		bool Attach_Tag(TagClass * tag);
 		virtual bool Is_Inactive(void) const override;
 
 		/*
@@ -365,12 +391,12 @@ class ObjectClass : public AbstractClass
 		virtual MoveType Can_Enter_Cell(CellClass const * cell, FacingType dir = FACING_NONE, int cell_height = -1, CellClass const * = 0, bool = true) const {return(MOVE_OK);}
 		virtual MoveType Can_Reach(CellClass const * current_cell, FacingType facing, int & cell_height, bool & onto_bridge, CellClass const * adjacent_cell) const {return(MOVE_OK);}
 
-		virtual Coord Get_Coord(void) const {return(Position);}
+		virtual Coord Get_Coord(void) const;
 		virtual void Set_Coord(Coord const & coord);
 
 		__declspec( property( get=Get_Coord, put=Set_Coord ) ) Coord PositionCoord;
 
-		virtual Cell Get_Cell(void) const {return(Position.As_Cell());}
+		virtual Cell Get_Cell(void) const;
 
 		__declspec( property( get=Get_Cell /*put=*/ ) ) Cell PositionCell;
 
@@ -390,12 +416,10 @@ class ObjectClass : public AbstractClass
 
 		__declspec( property( get=Get_Height, put=Set_Height ) ) int Height;
 
-		void Spring_Tag(TEventType event=TEVENT_ANY, ObjectClass * object=NULL, Cell const & cell=CELL_NONE, bool forced=false, TechnoClass *source=NULL)
-		{
-			if (IsActive && Tag != NULL) {
-				Tag->Spring(event, object, cell, forced, source);
-			}
-		}
+		bool Attach_Tag(TagClass * tag);
+
+		void Spring_Tag(TEventType event=TEVENT_ANY, ObjectClass * object=NULL, Cell const & cell=CELL_NONE, bool forced=false, TechnoClass *source=NULL);
+		void Spring_Tag_Regardless(TEventType event=TEVENT_ANY, ObjectClass * object=NULL, Cell const & cell=CELL_NONE, bool forced=false, TechnoClass *source=NULL);
 
 		/*
 		**	Scenario and debug support.
@@ -425,3 +449,11 @@ inline ObjectClass * As_Object(AbstractClass * target)
 
 Coord Vector_Center(DynamicVectorClass<ObjectClass *> const & list);
 ObjectClass * Vector_Closest_Object(DynamicVectorClass<ObjectClass *> const & list, Coord const & coord);
+
+struct ObjectEntity
+{
+	static inline entt::registry & Registry_Impl(void)
+	{
+		return(ObjectClass::registry);
+	}
+};

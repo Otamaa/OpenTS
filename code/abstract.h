@@ -40,6 +40,7 @@
 #include "rtti.hh"
 
 #include <entt/entity/entity.hpp>
+#include <entt/entity/registry.hpp>
 
 #include <comdef.h>
 

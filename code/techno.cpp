@@ -869,8 +869,8 @@ bool TechnoClass::Revealed(HouseClass * house)
 				**	If there is a trigger event associated with this object, then process
 				**	it for discovery purposes.
 				*/
-				if (!ScenarioInit && Tag != NULL) {
-					Tag->Spring(TEVENT_DISCOVERED, this);
+				if (!ScenarioInit) {
+					Spring_Tag_Regardless(TEVENT_DISCOVERED, this);
 				}
 
 				/*
@@ -1168,10 +1168,9 @@ void TechnoClass::Per_Cell_Process(PCPType why)
 		Cell cell = Center_Coord().As_Cell();
 
 		Try_To_Cloak();
+		auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
 
-		if (Tag != NULL) {
-			Tag->Spring(TEVENT_NEAR_WAYPOINT, this);
-		}
+		Spring_Tag_Regardless(TEVENT_NEAR_WAYPOINT, this);
 
 		/*
 		**	When enemy units enter the proper map area from off map, they are
@@ -3419,9 +3418,7 @@ bool TechnoClass::Select(void)
 		**	Speak a confirmation of selection.
 		*/
 		if (House->Is_Player_Control() && AllowVoice) {
-			if (Tag != NULL) {
-				Tag->Spring(TEVENT_SELECTED, this);
-			}
+			Spring_Tag_Regardless(TEVENT_SELECTED, this);	
 			Response_Select();
 		}
 		return(true);
@@ -3892,9 +3889,7 @@ BulletClass * TechnoClass::Fire_At(AbstractClass * target, int which)
 			if (weapon->Sound.Count() > 0) {
 				Sound_Effect((VocType)weapon->Sound.Pick(SoundRandomSeed));
 			}
-			if (techno->Tag != NULL) {
-				techno->Tag->Spring(TEVENT_LIMPED, techno);
-			}
+				techno->Spring_Tag_Regardless(TEVENT_LIMPED, techno);
 			DebugString("Limped %s\n", (char const *)techno->TClass->IniName);
 			Delete_Me();
 		}
@@ -4837,9 +4832,7 @@ bool TechnoClass::Captured(HouseClass * newowner)
 		**	object that flags a capture as a win and a destroy as a loss. This
 		**	order is necessary because the object is recorded as a kill as well.
 		*/
-		if (Tag != NULL) {
-			Tag->Spring(TEVENT_PLAYER_ENTERED, this);
-		}
+		Spring_Tag_Regardless(TEVENT_PLAYER_ENTERED, this);
 
 		House->Tracking_Active_Remove(this, false);
 
@@ -5304,17 +5297,13 @@ void TechnoClass::Record_The_Kill(TechnoClass * source)
 	/*
 	**	Handle any trigger event associated with this object.
 	*/
-	if (IsActive && Tag && source) Tag->Spring(TEVENT_ATTACKED, this);
-
-	if (IsActive && Tag && source) Tag->Spring(TEVENT_DISCOVERED, this);
-
+	if (source) Spring_Tag(TEVENT_ATTACKED, this);
+	if (source) Spring_Tag(TEVENT_DISCOVERED, this);
+	
 	if (IsActive && RTTI != RTTI_UNIT) {
-
-		if (IsActive && Tag && source) Tag->Spring(TEVENT_DESTROYED, this);
-
-		if (IsActive && Tag) Tag->Spring(TEVENT_DESTROYED_ANY, this);
-
-		if (IsActive && Tag) Tag->Spring(TEVENT_DESTROYED_ANY_X, this);
+		if (source) Spring_Tag(TEVENT_DESTROYED, this);
+		Spring_Tag(TEVENT_DESTROYED_ANY, this);
+		Spring_Tag(TEVENT_DESTROYED_ANY_X, this);
 	}
 
 	if (source != NULL) {

@@ -97,7 +97,7 @@ ParticleSystemClass::ParticleSystemClass(ParticleSystemTypeClass const * type, C
 	Unlimbo(spawn);
 
 	if (Source != NULL) {
-		CoordOffset = Coord(Position) - Source->Center_Coord();
+		CoordOffset = Coord(ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot).Position) - Source->Center_Coord();
 	}
 
 	ObjectPtrTracker.Add(this);

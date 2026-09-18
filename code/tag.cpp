@@ -300,7 +300,7 @@ bool TagClass::Spring(TEventType event, ObjectClass * object, Cell cell, bool fo
 	IsCurrentlySprung = false;
 
 	if (det) {
-		if (object != NULL && object->Tag == this) {
+		if (object != NULL && ObjectEntity::Registry_Impl().get<TagClassComponent>(object->EntitySlot).Tag == this) {
 			object->Attach_Tag(NULL);
 		}
 		if (cell != CELL_NONE) {

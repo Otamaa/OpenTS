@@ -178,6 +178,8 @@ bool VoxelAnimClass::Render(Rect &cliprect, bool forced, bool extras_only) const
 /// <param name="cliprect">The clipping rectangle to draw within.</param>
 void VoxelAnimClass::Draw_It(Point2D const & xpoint, Rect const & cliprect) const
 {
+	Coord Position = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot).Position;
+
 	if (!Scen->Special.IsFogOfWar || !Map.Is_Fogged(Coord(Position))) {
 		Point2D point = xpoint;
 		Coord pos = Position;
@@ -304,10 +306,11 @@ void VoxelAnimClass::AI(void)
 	 * When the timer expires, perform the impact effects and remove the anim.
 	 */
 	if (ECCounter <= 0) {
+		Coord Position = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot).Position;
+
 		Coord coord = Position;
 		bool is_water = (Map[coord].Land_Type() == LAND_WATER);
-		coord = Position;
-		bool is_above_bridge = (Position.Z >= Map.Get_Height_GL(coord) + BRIDGE_LEPTON_HEIGHT);
+		bool is_above_bridge = coord.Z >= Map.Get_Height_GL(coord) + BRIDGE_LEPTON_HEIGHT;
 
 		/*
 		 * On solid ground (or on top of a bridge), play the expiration animation,
@@ -455,7 +458,7 @@ void VoxelAnimClass::AI(void)
 
 	switch (bounce_result) {
 		case BOUNCE_IMPACT: {
-
+			Coord Position = ObjectEntity::Registry_Impl().get<TransformComponent>(EntitySlot).Position;
 			/*
 			 * Struck the ground. If it landed in water it simply expires; otherwise it
 			 * plays the bounce effects and damages whatever it landed on.

@@ -79,6 +79,8 @@ public:
 	inline Vector3(void) {};
 	inline Vector3(float x, float y, float z) { X = x; Y = y; Z = z; }
 
+	~Vector3() = default;
+
 	// Assignment
 	inline void	Set(float x, float y, float z) { X = x; Y = y; Z = z; }
 	inline void	Set(const Vector3 & that) { X = that.X; Y = that.Y; Z = that.Z; }

@@ -177,7 +177,7 @@ class AnimClass : public ObjectClass, public StageClass
 		 * This is the physics state of an animation that travels under its own momentum -- a
 		 * meteor or a bouncing piece of debris. It moves the animation until it has settled.
 		 */
-		BounceClass Bounce;
+		//BounceClass Bounce;
 
 		/*
 		 * This is how transparently the animation is drawn (0 - 15), where zero is opaque and

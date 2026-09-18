@@ -27,6 +27,7 @@ class Quaternion
 
 		Quaternion(float x = 0.0, float y = 0.0, float z = 0.0, float w = 1.0);
 		Quaternion operator=(const Quaternion & q);
+		~Quaternion() = default;
 
 		void Set(float a = 0.0, float b = 0.0, float c = 0.0, float d = 1.0);
 		void Make_Identity(void) { Set(); };

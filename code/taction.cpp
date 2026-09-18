@@ -748,6 +748,13 @@ bool TActionClass::TAction_PARTICLE_ANIM(HouseClass * , ObjectClass * , TriggerC
 }
 
 
+
+bool IsTriggerAttached(ObjectClass* obj, TriggerClass * trig) {
+	auto& objTagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(obj->EntitySlot);
+	return objTagClass_Component.Tag && objTagClass_Component.Tag->Is_Trigger_Attached(trig);
+}
+
+
 /// <summary>
 /// Wakes the objects this trigger is attached to.
 /// Sleeping and harmless objects carrying the trigger's tag are put back on
@@ -757,7 +764,7 @@ bool TActionClass::TAction_WAKEUP_SELF(HouseClass * , ObjectClass * , TriggerCla
 {
 	for (int index = 0; index < Technos.Count(); index++) {
 		TechnoClass * techno = Technos[index];
-		if (techno->RTTI != RTTI_BUILDING && techno->IsActive && techno->IsDown && techno->Tag != NULL && techno->Tag->Is_Trigger_Attached(trigger)) {
+		if (techno->RTTI != RTTI_BUILDING && techno->IsActive && techno->IsDown && IsTriggerAttached(techno, trigger)) {
 			if (techno->Mission == MISSION_SLEEP || techno->Mission == MISSION_HARMLESS) {
 				techno->Assign_Mission(MISSION_GUARD);
 			}
@@ -966,12 +973,7 @@ bool TActionClass::TAction_SELL_ATTACHED(HouseClass * , ObjectClass * , TriggerC
 
 	for (int index = 0; index < Buildings.Count(); index++) {
 		BuildingClass * building = Buildings[index];
-		if (building->IsActive &&
-				building->IsDown &&
-				!building->IsInLimbo &&
-				building->Tag != NULL &&
-				building->Tag->Is_Trigger_Attached(trig)) {
-
+		if (building->IsActive && building->IsDown && !building->IsInLimbo && IsTriggerAttached(building, trig)) {
 			building->Sell_Back(1);
 			success = true;
 		}
@@ -995,8 +997,7 @@ bool TActionClass::TAction_GO_BERZERK(HouseClass * , ObjectClass * , TriggerClas
 		if (infantry->IsActive &&
 				infantry->IsDown &&
 				!infantry->IsInLimbo &&
-				infantry->Tag != NULL &&
-				infantry->Tag->Is_Trigger_Attached(trig)) {
+				IsTriggerAttached(infantry, trig)) {
 
 			infantry->Berzerk();
 			success = true;
@@ -1020,8 +1021,7 @@ bool TActionClass::TAction_TURN_OFF_ATTACHED(HouseClass * , ObjectClass * , Trig
 		if (building->IsActive &&
 				building->IsDown &&
 				!building->IsInLimbo &&
-				building->Tag != NULL &&
-				building->Tag->Is_Trigger_Attached(trig) &&
+				IsTriggerAttached(building, trig) &&
 				building->IsOn) {
 
 			building->Turn_Off();
@@ -1043,7 +1043,7 @@ bool TActionClass::TAction_TURN_ON_ATTACHED(HouseClass * , ObjectClass * , Trigg
 	bool success = false;
 	for (int index = 0; index < Buildings.Count(); index++) {
 		BuildingClass * building = Buildings[index];
-		if (building->IsActive && building->IsDown && !building->IsInLimbo && building->Tag != NULL && building->Tag->Is_Trigger_Attached(trig) && !building->IsOn) {
+		if (building->IsActive && building->IsDown && !building->IsInLimbo && IsTriggerAttached(building, trig) && !building->IsOn) {
 			building->Turn_On();
 			success = true;
 		}
@@ -1067,8 +1067,7 @@ bool TActionClass::TAction_CHANGE_HOUSE(HouseClass * , ObjectClass * , TriggerCl
 		if (techno->IsActive &&
 				techno->IsDown &&
 				!techno->IsInLimbo &&
-				techno->Tag != NULL &&
-				techno->Tag->Is_Trigger_Attached(trig)) {
+				IsTriggerAttached(techno, trig)) {
 
 			techno->Captured(House_From_HousesType(Data.House));
 			success = true;
@@ -1759,7 +1758,8 @@ bool TActionClass::TAction_DESTROY_OBJECT(HouseClass * , ObjectClass * , Trigger
 		process = false;
 		for (int index = 0; index < Technos.Count(); index++) {
 			TechnoClass * techno = Technos[index];
-			if (techno->Strength > 0 && techno->IsActive && techno->IsDown && !techno->IsInLimbo && techno->Tag != NULL && techno->Tag->Is_Trigger_Attached(trig)) {
+			if (techno->Strength > 0 && techno->IsActive && techno->IsDown && !techno->IsInLimbo &&
+				IsTriggerAttached(techno, trig)) {
 				int damage = techno->Strength;
 				techno->Take_Damage(damage, 0, Rule->C4Warhead, 0, true);
 				any = true;
@@ -2056,8 +2056,7 @@ bool TActionClass::TAction_CHANGE_SPOTLIGHT_BEHAVIOR(HouseClass * , ObjectClass 
 				!ptr->IsInLimbo &&
 				ptr->Class->HasSpotlight &&
 				ptr->BuildingLight != NULL &&
-				ptr->Tag != NULL &&
-				ptr->Tag->Is_Trigger_Attached(trig)) {
+				IsTriggerAttached(ptr, trig)) {
 			ptr->BuildingLight->Set_Behavior_Type(Data.LightBehavior);
 			success = true;
 		}

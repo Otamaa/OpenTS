@@ -3448,9 +3448,10 @@ bool CellClass::Goodie_Check(FootClass * object)
 		}
 
 		if (OverlayTypes[Overlay]->IsCrateTrigger) {
-			if (object->Tag != NULL) {
+			auto& objectTagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(object->EntitySlot);
+			if (objectTagClass_Component.Tag != NULL) {
 				DebugString("Springing trigger on crate at %d,%d\n", CellID.X, CellID.Y);
-				object->Tag->Spring(TEVENT_PICKUP_CRATE, object);
+				objectTagClass_Component.Tag->Spring(TEVENT_PICKUP_CRATE, object);
 				if (!object->IsActive) {
 					return(false);
 				}

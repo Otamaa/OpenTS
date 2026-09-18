@@ -116,7 +116,7 @@ class BulletClass : public ObjectClass
 		 * with the impact point as the projectile is launched and trips once the projectile
 		 * stops closing on it.
 		 */
-		FuseClass Fuse;
+		//FuseClass Fuse;
 
 		/*
 		 * If the explosion of this projectile should light up the terrain around it, then

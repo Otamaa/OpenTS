@@ -5039,10 +5039,11 @@ int BuildingClass::Do_MISSION_DECONSTRUCTION(void)
 								unit->Assign_Mission(MISSION_MOVE);
 							}
 
-							if (Tag != NULL) {
-								unit->Attach_Tag(Tag);
-								Tag->AttachCount--;
-								Tag = NULL;
+							auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
+							if (TagClass_Component.Tag != NULL) {
+								unit->Attach_Tag(TagClass_Component.Tag);
+								TagClass_Component.Tag->AttachCount--;
+								TagClass_Component.Tag = NULL;
 							}
 
 							if (selected) {
@@ -7114,7 +7115,7 @@ void BuildingClass::Write_INI(CCINIClass & ini)
 {
 	char	uname[10];
 	char	buf[127];
-
+	auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot);
 	sprintf(uname, "%d", Fetch_ID());
 	int behavior;
 	if (BuildingLight != NULL) {
@@ -7124,8 +7125,8 @@ void BuildingClass::Write_INI(CCINIClass & ini)
 	}
 
 	char const * tag_name;
-	if (Tag != NULL && Tag->Class != NULL) {
-		tag_name = (char const *)Tag->Class->IniName;
+	if (TagClass_Component.Tag != NULL && TagClass_Component.Tag->Class != NULL) {
+		tag_name = (char const *)TagClass_Component.Tag->Class->IniName;
 	} else {
 		tag_name = "None";
 	}
@@ -7381,11 +7382,12 @@ void BuildingClass::Repair_AI(void)
 					}
 				}
 			} else {
+
 				if ((Session.Type != GAME_NORMAL || IsAllowedToSell) &&
 					IsTickedOff &&
 					(unsigned)House->Control.TechLevel >= (unsigned)Rule->IQSellBack &&
 					(unsigned)Random_Pick(0, 50) < (unsigned)House->Control.TechLevel &&
-					Tag == NULL &&
+					ObjectEntity::Registry_Impl().get<TagClassComponent>(EntitySlot).Tag == NULL &&
 					Class->ToBuild != RTTI_BUILDINGTYPE &&
 					HealthRatio < Rule->ConditionRed)
 				{

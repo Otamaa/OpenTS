@@ -249,31 +249,34 @@ void BuildingLightClass::AI(void)
 	BuildingClass * owner_building = (Owner->RTTI == RTTI_BUILDING) ? (BuildingClass *)Owner : NULL;
 
 	if (Behavior == LIGHT_BEHAVIOR_SWEEP) {
-		if (owner_building != NULL && owner_building->IsActive && owner_building->Is_Powered_On() && owner_building->Tag != NULL) {
-			bool found = false;
-			Cell cell = PositionCell;
-			int detection = Detection_Radius() + 30;
-			HouseClass * house = Owner->House;
+		if (owner_building != NULL && owner_building->IsActive && owner_building->Is_Powered_On()) {
+			auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(owner_building->EntitySlot);
+			if(TagClass_Component.Tag != NULL){
+				bool found = false;
+				Cell cell = PositionCell;
+				int detection = Detection_Radius() + 30;
+				HouseClass * house = Owner->House;
 
-			for (int x = -1; x < 2; x++) {
-				for (int y = -1; y < 2; y++) {
-					ObjectClass * occupier = Map[cell + Cell(x, y)].Cell_Occupier();
-					while (occupier != NULL) {
-						if ((occupier->RTTI == RTTI_INFANTRY || occupier->RTTI == RTTI_UNIT) && !house->Is_Ally(occupier)) {
-							int dist = occupier->Center_Coord().Distance_To(Get_Coord());
-							if (dist < detection) {
-								found = true;
+				for (int x = -1; x < 2; x++) {
+					for (int y = -1; y < 2; y++) {
+						ObjectClass * occupier = Map[cell + Cell(x, y)].Cell_Occupier();
+						while (occupier != NULL) {
+							if ((occupier->RTTI == RTTI_INFANTRY || occupier->RTTI == RTTI_UNIT) && !house->Is_Ally(occupier)) {
+								int dist = occupier->Center_Coord().Distance_To(Get_Coord());
+								if (dist < detection) {
+									found = true;
+								}
 							}
+							occupier = occupier->Next;
 						}
-						occupier = occupier->Next;
+
 					}
-
 				}
-			}
 
-			if (found) {
-				owner_building->Tag->Spring(TEVENT_ENEMY_IN_SPOTLIGHT, owner_building);
-				owner_building->Tag->Spring(TEVENT_ENEMY_IN_SPOTLIGHT_REPEATING, owner_building);
+				if (found) {
+					owner_building->Spring_Tag_Regardless(TEVENT_ENEMY_IN_SPOTLIGHT, owner_building);
+					owner_building->Spring_Tag_Regardless(TEVENT_ENEMY_IN_SPOTLIGHT_REPEATING, owner_building);
+				}
 			}
 		}
 	}

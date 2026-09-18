@@ -1073,7 +1073,7 @@ bool TeamClass::Remove(FootClass * obj, int typeindex)
 	**	team have that trigger attached. The exception is for player team members that
 	**	get removed from a reinforcement team.
 	*/
-	if (obj->Tag == Tag) {
+	if (ObjectEntity::Registry_Impl().get<TagClassComponent>(obj->EntitySlot).Tag == Tag) {
 		HouseClass *hptr = obj->House;
 		if (hptr != NULL && !hptr->Is_Human_Player()) {
 			obj->Attach_Tag(NULL);

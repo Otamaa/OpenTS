@@ -132,7 +132,7 @@ AnimClass::AnimClass(AnimTypeClass const * type, Coord const & coord, int timede
 	FlamingGuyCoords(COORD_NONE),
 	FlamingGuyRetries(0),
 	IsBuildingAnim(false),
-	Bounce(),
+	//Bounce(),
 	Loops(1),
 	IsBouncing(false),
 	IsAttachedToCell(false),
@@ -154,6 +154,7 @@ AnimClass::AnimClass(AnimTypeClass const * type, Coord const & coord, int timede
 	IsActive = true;
 
 	YSortAdjust = Class->YSortAdjust;
+	auto& bounce = ObjectEntity::Registry_Impl().emplace<BounceClass>(EntitySlot);
 
 	if (Class->Stages == -1) {
 		Class->Stages = ((ShapeSet *)Class->Get_Image_Data())->Get_Count();
@@ -205,7 +206,7 @@ AnimClass::AnimClass(AnimTypeClass const * type, Coord const & coord, int timede
 			int z = coord.Z - time * velocity.Z;
 			Coord ucoord(x, y, z);
 			BASECLASS::Unlimbo(ucoord);
-			Bounce.Init(Center_Coord(), Class->Elasticity, 1.4f, 0.0, velocity, 0.0);
+			bounce.Init(Center_Coord(), Class->Elasticity, 1.4f, 0.0, velocity, 0.0);
 		} else {
 			BASECLASS::Unlimbo(coord);
 			Coord center = Center_Coord() + Coord(0, 0, 10);
@@ -215,7 +216,7 @@ AnimClass::AnimClass(AnimTypeClass const * type, Coord const & coord, int timede
 			float z = (abs(r1) % int(Class->MaxZVel - Class->MinZVel + 1.0)) + Class->MinZVel;
 
 			Vector3 velocity(x, y, z);
-			Bounce.Init(center, Class->Elasticity, 1.4f, 0.0, velocity, 0.0);
+			bounce.Init(center, Class->Elasticity, 1.4f, 0.0, velocity, 0.0);
 		}
 	}
 
@@ -266,6 +267,7 @@ AnimClass::AnimClass(void) :
 	IsAttachedToCell(false),
 	IsToDeleteOnOverpass(false)
 {
+	ObjectEntity::Registry_Impl().emplace<BounceClass>(EntitySlot);
 	Anims.Add(this);
 	IsActive = true;
 }
@@ -665,7 +667,7 @@ Cell const * AnimClass::Occupy_List(bool) const
 /// struck the ground and BOUNCE_SETTLED when it has finished bouncing and deleted itself.</returns>
 BounceResultType AnimClass::Bounce_AI(void)
 {
-	BounceClass & bounce = Bounce;
+	BounceClass & bounce = ObjectEntity::Registry_Impl().get<BounceClass>(EntitySlot);
 	BounceResultType bounce_result = bounce.AI();
 
 	if (Class->IsMeteor) {
@@ -740,10 +742,11 @@ void AnimClass::AI(void)
 				}
 			} else {
 				if (Class->ExpireAnim != NULL) {
-					Vector3 bouncecoord = Bounce.MyCoord;
+					BounceClass & bounce = ObjectEntity::Registry_Impl().get<BounceClass>(EntitySlot);
+					Vector3 bouncecoord = bounce.MyCoord;
 					new AnimClass(Class->ExpireAnim, Coord(bouncecoord.X, bouncecoord.Y, bouncecoord.Z), 0, 1, ShapeFlags_Type(SHAPE_CENTER|SHAPE_WIN_REL|SHAPE_ZGRAD), -30);
-					Explosion_Damage(Bounce.Get_Bounce_Coord(), Class->Damage, NULL, Class->Warhead);
-					Combat_Lighting(Bounce.Get_Bounce_Coord(), Class->Damage, Class->Warhead);
+					Explosion_Damage(bounce.Get_Bounce_Coord(), Class->Damage, NULL, Class->Warhead);
+					Combat_Lighting(bounce.Get_Bounce_Coord(), Class->Damage, Class->Warhead);
 				}
 				if (Class->ExpireSound != VOC_NONE) {
 					Sound_Effect(Class->ExpireSound, Center_Coord());
@@ -751,7 +754,8 @@ void AnimClass::AI(void)
 			}
 
 			if (!water || bridge) {
-				Coord coord = Bounce.Get_Bounce_Coord();
+				BounceClass & bounce = ObjectEntity::Registry_Impl().get<BounceClass>(EntitySlot);
+				Coord coord = bounce.Get_Bounce_Coord();
 				if (Class->Spawns != NULL && Class->SpawnCount > 0) {
 					int count = Random_Pick(0, Class->SpawnCount) + Random_Pick(0, Class->SpawnCount);
 					for (int i = 0; i < count; i++) {
@@ -1330,7 +1334,10 @@ void AnimClass::Serialize(SaveStreamClass & stream)
 	stream.Serialize(FlamingGuyCoords);
 	stream.Serialize(FlamingGuyRetries);
 	stream.Serialize(IsBuildingAnim);
-	stream.Serialize(Bounce);
+
+	BounceClass & bounce = ObjectEntity::Registry_Impl().get<BounceClass>(EntitySlot);
+	bounce.Serialize(stream);
+
 	stream.Serialize(TranslucencyLevel);
 	stream.Serialize(Delay);
 	stream.Serialize(Accum);

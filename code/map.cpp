@@ -7526,12 +7526,8 @@ bool MapClass::Break_Ice(CellClass * cellptr, FootClass * object)
 								new AnimClass(Rule->Wake, foot->PositionCoord);
 							}
 						} else {
-							if (foot->IsActive && foot->Tag != NULL) {
-								foot->Tag->Spring(TEVENT_DESTROYED_ANY, foot);
-							}
-							if (foot->IsActive && foot->Tag != NULL) {
-								foot->Tag->Spring(TEVENT_DESTROYED_ANY_X, foot);
-							}
+							foot->Spring_Tag(TEVENT_DESTROYED_ANY, foot);
+							foot->Spring_Tag(TEVENT_DESTROYED_ANY_X, foot);
 							foot->Delete_Me();
 							new AnimClass(Rule->Wake, foot->PositionCoord);
 						}

@@ -53,8 +53,8 @@ enum FuseResultType {
 */
 class FuseClass {
 	public:
-		FuseClass(void);
-		~FuseClass(void) {};
+		//FuseClass(void);
+		//~FuseClass(void) {};
 
 		void Arm_Fuse(Coord const & location, Coord const & target, int arming=0, int time=INT_MAX);
 		FuseResultType Fuse_Checkup(Coord const & newlocation);
@@ -64,7 +64,7 @@ class FuseClass {
 		**	Fuses can detonate if enough time has elapsed. This value counts
 		**	down. When it reaches zero, detonation occurs.
 		*/
-		CDTimerClass<FrameTimerClass> Timer;
+		CDTimerClass<FrameTimerClass> Timer {};
 
 		// Carries the fuse to or from a save game.
 		template<typename S>
@@ -83,18 +83,18 @@ class FuseClass {
 		**	occur. This counts down and when it reaches zero, normal fuse
 		**	detonation checking can occur.
 		*/
-		CDTimerClass<FrameTimerClass> Arming;
+		CDTimerClass<FrameTimerClass> Arming {};
 
 		/*
 		**	This is the designated impact point of the projectile. The fuse
 		**	will trip when the closest point to this location has been reached.
 		*/
-		Coord HeadTo;
+		Coord HeadTo {};
 
 		/*
 		**	This is the running proximity value to the impact point. This value
 		**	will progressively get smaller. Detonation occurs when it reaches
 		**	zero or when it starts to grow larger.
 		*/
-		int Proximity;
+		int Proximity {};
 };

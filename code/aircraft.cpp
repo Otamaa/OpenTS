@@ -3788,6 +3788,7 @@ void AircraftClass::Write_INI(CCINIClass & ini)
 		if (air != NULL && !air->IsInLimbo && air->IsActive) {
 			char	uname[10];
 			char	buf[128];
+			auto& TagClass_Component = ObjectEntity::Registry_Impl().get<TagClassComponent>(air->EntitySlot);
 
 			sprintf(uname, "%d", index);
 
@@ -3799,7 +3800,7 @@ void AircraftClass::Write_INI(CCINIClass & ini)
 				air->PositionCell.Y,
 				air->PrimaryFacing.Current().As_Dir256(),
 				MissionClass::Mission_Name(air->Mission),
-				(air->Tag != NULL) ? (char const *)air->Tag->Class->IniName : "None",
+				(TagClass_Component.Tag != NULL) ? (char const *)TagClass_Component.Tag->Class->IniName : "None",
 				air->Veterancy.To_Integer(),
 				air->Group,
 				air->IsTeamRecruitable,
@@ -4187,17 +4188,11 @@ bool AircraftClass::Crash(TechnoClass * source)
 {
 	if (HeightAGL > 0) {
 		if (Strength > 0) {
-			if (source != NULL && Tag != NULL) {
-				Tag->Spring(TEVENT_FIRST_DAMAGED, this);
-			}
-			if (Tag != NULL && IsActive) {
-				Tag->Spring(TEVENT_FIRST_DAMAGED_ANY, this);
-			}
-			if (Tag != NULL) {
-				if (IsActive && source != NULL) {
-					Tag->Spring(TEVENT_FIRST_DAMAGED_ANY, this, CELL_NONE, false, source);
-				}
-			}
+
+			if (source != NULL)  Spring_Tag_Regardless(TEVENT_FIRST_DAMAGED, this);
+			Spring_Tag(TEVENT_FIRST_DAMAGED_ANY, this);
+			if (source != NULL) Spring_Tag(TEVENT_FIRST_DAMAGED_ANY, this, CELL_NONE, false, source);
+
 			if (!IsActive) {
 				return(true);
 			}
